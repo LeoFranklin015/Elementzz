@@ -42,13 +42,43 @@ export default function Lobby() {
     query: { enabled: !!address },
   });
 
+  // Room state
+  const { data: roomState, refetch: refetchRoom } = useReadContract({
+    address: BATTLE_ROOM,
+    abi: battleRoomAbi,
+    functionName: "state",
+  });
+  const { data: roomStake } = useReadContract({
+    address: BATTLE_ROOM,
+    abi: battleRoomAbi,
+    functionName: "stake",
+  });
+  const { data: p1Wallet } = useReadContract({
+    address: BATTLE_ROOM,
+    abi: battleRoomAbi,
+    functionName: "p1Wallet",
+  });
+  const { data: p2Wallet } = useReadContract({
+    address: BATTLE_ROOM,
+    abi: battleRoomAbi,
+    functionName: "p2Wallet",
+  });
+
+  const roomStateNum = roomState !== undefined ? Number(roomState) : null;
+  const isWaiting = roomStateNum === 0 && p1Wallet && p1Wallet !== "0x0000000000000000000000000000000000000000";
+  const isActive = roomStateNum === 1;
+  const isSettled = roomStateNum === 2;
+  const isMyRoom = p1Wallet?.toLowerCase() === address?.toLowerCase();
+  const canJoin = isWaiting && !isMyRoom;
+
   // Player approve (via JAW popup — one time)
   const { writeContractAsync } = useWriteContract();
   const [approveTxHash, setApproveTxHash] = useState<`0x${string}` | undefined>();
   const { data: approveReceipt } = useWaitForTransactionReceipt({ hash: approveTxHash });
 
   const stakeAmount = parseUnits(stake.toString(), 6);
-  const hasEnough = usdcBal !== undefined && usdcBal >= stakeAmount;
+  const joinStakeAmount = roomStake || stakeAmount; // use room's stake for joining
+  const hasEnough = usdcBal !== undefined && usdcBal >= (canJoin ? joinStakeAmount : stakeAmount);
   const permissionId = mounted ? getStoredPermissionId() : null;
   const sessionAddr = mounted ? getStoredSessionAddress() : null;
   const isApproved = currentAllowance !== undefined && currentAllowance >= stakeAmount;
@@ -131,21 +161,38 @@ export default function Lobby() {
     setError(null);
 
     try {
-      // Approve first if needed (player popup)
+      // Approve first if needed (player popup — one time)
       if (!isApproved) {
         setStep("approving");
         setStatusMsg("Approve USDC in wallet popup...");
-        const hash = await writeContractAsync({
+        await writeContractAsync({
           address: MOCK_USDC,
           abi: mockUsdcAbi,
           functionName: "approve",
           args: [BATTLE_ROOM, parseUnits("1000", 6)],
         });
-        // Wait for approve
         setStatusMsg("Waiting for approval...");
-        await new Promise(r => setTimeout(r, 8000));
+        // Poll until allowance is set
+        for (let i = 0; i < 20; i++) {
+          await new Promise(r => setTimeout(r, 2000));
+          const { data } = await refetchBal();
+          // Also re-check allowance manually
+          try {
+            const resp = await fetch(`https://sepolia.base.org`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                jsonrpc: "2.0", id: 1, method: "eth_call",
+                params: [{ to: MOCK_USDC, data: encodeFunctionData({ abi: mockUsdcAbi, functionName: "allowance", args: [address, BATTLE_ROOM] }) }, "latest"]
+              }),
+            });
+            const json = await resp.json();
+            if (json.result && BigInt(json.result) > BigInt(0)) break;
+          } catch { /* keep polling */ }
+        }
       }
 
+      // Session key joins room
       setStep("joining");
       setStatusMsg("Loading session key...");
       const { account } = await getOrCreateSessionAccount();
@@ -163,6 +210,9 @@ export default function Lobby() {
         PAYMASTER_URL || undefined,
         POLICY_ID ? { sponsorshipPolicyId: POLICY_ID } : undefined,
       );
+      console.log("JoinRoom sent:", joinResult);
+
+      setStatusMsg("Waiting for confirmation...");
       await pollCallStatus(account, joinResult.id);
 
       setStep("done");
@@ -223,18 +273,78 @@ export default function Lobby() {
               </div>
             </div>
 
+            {/* Room status */}
+            <div className="pixel-border p-4 space-y-2">
+              <div className="font-[family-name:var(--font-press-start)] text-[8px] text-white/50">BATTLE ROOM</div>
+              {roomStateNum === null && <div className="text-white/30 text-sm">Loading...</div>}
+              {roomStateNum === 0 && !isWaiting && (
+                <div className="text-white/50 text-sm">Empty — no room created yet</div>
+              )}
+              {isWaiting && (
+                <div className="space-y-1">
+                  <div className="text-sm">
+                    <span className="text-white/50">Status: </span>
+                    <span style={{ color: "#ffaa00" }}>WAITING FOR OPPONENT</span>
+                  </div>
+                  <div className="text-sm">
+                    <span className="text-white/50">P1: </span>
+                    <span className="font-mono text-white/70">{p1Wallet?.slice(0, 8)}...{p1Wallet?.slice(-6)}</span>
+                    {isMyRoom && <span className="text-white/30 ml-2">(you)</span>}
+                  </div>
+                  <div className="text-sm">
+                    <span className="text-white/50">Stake: </span>
+                    <span className="text-white">{roomStake ? formatUnits(roomStake, 6) : "..."} USDC</span>
+                  </div>
+                </div>
+              )}
+              {isActive && (
+                <div className="space-y-1">
+                  <div className="text-sm"><span className="text-white/50">Status: </span><span style={{ color: "#ff4400" }}>BATTLE IN PROGRESS</span></div>
+                  <a href="/room/1" className="text-white/50 underline text-xs">Watch battle →</a>
+                </div>
+              )}
+              {isSettled && (
+                <div className="text-sm"><span className="text-white/50">Status: </span><span className="text-white/30">SETTLED</span></div>
+              )}
+              <button onClick={() => refetchRoom()} className="text-white/30 text-xs hover:text-white/50 cursor-pointer">↻ Refresh</button>
+            </div>
+
             {/* Actions */}
             <div className="space-y-3">
-              <button onClick={handleCreateRoom}
-                disabled={step !== "idle" && step !== "error" || !cards.length || !hasEnough || !permissionId}
-                className="pixel-btn w-full text-xs disabled:opacity-30">
-                {step === "approving" ? "APPROVE IN POPUP..." : step === "creating" ? "CREATING..." : "CREATE ROOM"}
-              </button>
-              <button onClick={handleJoinRoom}
-                disabled={step !== "idle" && step !== "error" || !cards.length || !hasEnough || !permissionId}
-                className="pixel-btn w-full text-xs disabled:opacity-30">
-                {step === "joining" ? "JOINING..." : "JOIN ROOM"}
-              </button>
+              {/* Show CREATE only if room is empty or settled */}
+              {(roomStateNum === 0 && !isWaiting || isSettled || roomStateNum === null) && (
+                <button onClick={handleCreateRoom}
+                  disabled={step !== "idle" && step !== "error" || !cards.length || !hasEnough || !permissionId}
+                  className="pixel-btn w-full text-xs disabled:opacity-30">
+                  {step === "approving" ? "APPROVE IN POPUP..." : step === "creating" ? "CREATING..." : "CREATE ROOM"}
+                </button>
+              )}
+              {/* Show JOIN only if room is waiting and it's not your room */}
+              {canJoin && (
+                <button onClick={handleJoinRoom}
+                  disabled={step !== "idle" && step !== "error" || !cards.length || !hasEnough || !permissionId}
+                  className="pixel-btn w-full text-xs disabled:opacity-30">
+                  {step === "approving" ? "APPROVE IN POPUP..." : step === "joining" ? "JOINING..." : `JOIN ROOM (${roomStake ? formatUnits(roomStake, 6) : "..."} USDC)`}
+                </button>
+              )}
+              {/* Debug — remove later */}
+              {canJoin && (
+                <div className="text-[10px] font-mono text-white/20">
+                  step={step} cards={cards.length} hasEnough={String(hasEnough)} perm={permissionId ? "yes" : "no"}
+                </div>
+              )}
+              {/* If it's your room and waiting */}
+              {isWaiting && isMyRoom && (
+                <div className="text-center text-white/40 text-sm">
+                  Waiting for an opponent to join your room...
+                </div>
+              )}
+              {/* If battle is active */}
+              {isActive && (
+                <a href="/room/1" className="pixel-btn w-full text-xs text-center block">
+                  GO TO BATTLE →
+                </a>
+              )}
             </div>
 
             {/* No permission warning */}

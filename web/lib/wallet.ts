@@ -9,7 +9,7 @@ export const jawConnect = jaw({
   appName: "Elementzz",
   appLogoUrl: "https://elementzz.vercel.app/sprites/elem-fire.png",
   defaultChainId: baseSepolia.id,
-  ens: "elementzz.eth",
+  // ens: "elementzz.eth", // disabled — ENS resolution defaults to mainnet, need to fix chainId
   preference: {
     showTestnets: true,
   },
