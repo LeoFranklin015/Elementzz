@@ -1,0 +1,242 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #050505;
+  --bg-panel: #0a0a0a;
+  --bg-card: #0d0d0d;
+  --green: #00ff41;
+  --green-dim: #00cc33;
+  --green-dark: #0a3a0a;
+  --green-glow: #00ff4180;
+  --red: #ff2244;
+  --red-dim: #cc1133;
+  --red-glow: #ff224480;
+  --amber: #ffaa00;
+  --blue: #0088ff;
+  --fire: #ff4400;
+  --water: #0088ff;
+  --lightning: #ffaa00;
+  --text: rgba(255, 255, 255, 0.9);
+  --text-dim: rgba(255, 255, 255, 0.4);
+  --border: rgba(255, 255, 255, 0.1);
+  --background: #050505;
+  --foreground: rgba(255, 255, 255, 0.9);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-pixel: var(--font-press-start);
+  --font-mono: var(--font-vt323);
+}
+
+* {
+  image-rendering: pixelated;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-vt323), monospace;
+}
+
+/* Scanline overlay */
+.scanlines::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(255, 255, 255, 0.015) 2px,
+    rgba(255, 255, 255, 0.015) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* CRT vignette */
+.crt::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 60%, rgba(0, 0, 0, 0.6) 100%);
+  pointer-events: none;
+  z-index: 9998;
+}
+
+/* Pixel border */
+.pixel-border {
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    inset 0 0 0 1px var(--bg),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.05),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.pixel-border-green {
+  border-color: var(--green-dark);
+  box-shadow:
+    0 0 8px var(--green-glow),
+    inset 0 0 4px rgba(0, 255, 65, 0.05);
+}
+
+.pixel-border-red {
+  border-color: var(--red-dim);
+  box-shadow:
+    0 0 8px var(--red-glow),
+    inset 0 0 4px rgba(255, 34, 68, 0.05);
+}
+
+/* Glow text */
+.glow-green {
+  color: var(--green);
+  text-shadow: 0 0 10px var(--green-glow), 0 0 20px rgba(0, 255, 65, 0.3);
+}
+
+.glow-red {
+  color: var(--red);
+  text-shadow: 0 0 10px var(--red-glow), 0 0 20px rgba(255, 34, 68, 0.3);
+}
+
+/* Pixel button — white default */
+.pixel-btn {
+  position: relative;
+  padding: 12px 24px;
+  background: transparent;
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  color: white;
+  font-family: var(--font-press-start), monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.15s;
+  letter-spacing: 1px;
+}
+
+.pixel-btn:hover {
+  background: white;
+  color: var(--bg);
+  box-shadow: 0 0 16px rgba(255, 255, 255, 0.15);
+}
+
+.pixel-btn:active {
+  transform: translateY(2px);
+}
+
+/* Legacy green button — for game-specific UI */
+.pixel-btn-green {
+  background: var(--green-dark);
+  border-color: var(--green);
+  color: var(--green);
+}
+.pixel-btn-green:hover {
+  background: var(--green);
+  color: var(--bg);
+  box-shadow: 0 0 16px var(--green-glow), 0 0 32px rgba(0, 255, 65, 0.2);
+}
+
+.pixel-btn-red {
+  background: rgba(255, 34, 68, 0.1);
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.pixel-btn-red:hover {
+  background: var(--red);
+  color: var(--bg);
+  box-shadow: 0 0 16px var(--red-glow);
+}
+
+/* Flicker animation */
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.95; }
+  75% { opacity: 0.98; }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes pulse-green {
+  0%, 100% { box-shadow: 0 0 4px var(--green-glow); }
+  50% { box-shadow: 0 0 16px var(--green-glow), 0 0 32px rgba(0, 255, 65, 0.15); }
+}
+
+@keyframes pulse-white {
+  0%, 100% { box-shadow: 0 0 4px rgba(255,255,255,0.1); }
+  50% { box-shadow: 0 0 16px rgba(255,255,255,0.15), 0 0 32px rgba(255,255,255,0.05); }
+}
+
+@keyframes pulse-border {
+  0%, 100% { border-color: rgba(255, 255, 255, 0.1); }
+  50% { border-color: rgba(255, 255, 255, 0.3); }
+}
+
+@keyframes slide-up {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes typewriter {
+  from { width: 0; }
+  to { width: 100%; }
+}
+
+@keyframes creature-float {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  30% { transform: translateY(-6px) rotate(-2deg); }
+  60% { transform: translateY(-3px) rotate(1deg); }
+}
+@keyframes creature-swim {
+  0%, 100% { transform: translateX(0) translateY(0); }
+  25% { transform: translateX(4px) translateY(-4px); }
+  50% { transform: translateX(0) translateY(-6px); }
+  75% { transform: translateX(-4px) translateY(-2px); }
+}
+@keyframes creature-pulse {
+  0%, 100% { transform: translateY(0) scale(1); filter: brightness(1); }
+  50% { transform: translateY(-5px) scale(1.05); filter: brightness(1.2); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10% { transform: translateX(-6px) rotate(-0.5deg); }
+  30% { transform: translateX(5px) rotate(0.5deg); }
+  50% { transform: translateX(-4px); }
+  70% { transform: translateX(3px); }
+  90% { transform: translateX(-1px); }
+}
+@keyframes damage-float {
+  0% { transform: translateX(-50%) translateY(0); opacity: 1; }
+  60% { opacity: 1; }
+  100% { transform: translateX(-50%) translateY(-40px); opacity: 0; }
+}
+@keyframes impact-pop {
+  0% { transform: scale(0.5); opacity: 0; }
+  40% { transform: scale(1.4); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.animate-shake { animation: shake 0.3s ease-out; }
+.animate-damage { animation: damage-float 1.4s ease-out forwards; }
+.animate-impact { animation: impact-pop 0.4s ease-out; }
+.animate-flicker { animation: flicker 3s infinite; }
+.animate-blink { animation: blink 1s step-end infinite; }
+.animate-pulse-green { animation: pulse-green 2s ease-in-out infinite; }
+.animate-pulse-border { animation: pulse-border 2s ease-in-out infinite; }
+.animate-slide-up { animation: slide-up 0.5s ease-out forwards; }
+
+/* HP bar fill animation */
+.hp-bar-fill {
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.05); }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
