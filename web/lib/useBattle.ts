@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { type CardState, type Decision, type Action, simulateTurn } from "./agent";
+import { type CardState, type Decision, type Action, type Strategy, simulateTurn } from "./agent";
 
 export interface BattleCard extends CardState {
   address?: string;
@@ -36,37 +36,29 @@ function buildLogs(
   p2Hp: number[],
 ): Array<{ text: string; color: string }> {
   const logs: Array<{ text: string; color: string }> = [];
-
   for (const f of fights) {
     const p1Name = NAMES[p1Cards[f.slot].element];
     const p2Name = NAMES[p2Cards[f.slot].element];
-
     if (f.p1Dmg > 0) {
       const ko = p2Hp[f.slot] <= 0;
-      logs.push({
-        text: `${p1Name} deals ${f.p1Dmg} to ${p2Name}${ko ? " — KNOCKOUT!" : ""}`,
-        color: ko ? "#ff2244" : COLORS[p1Cards[f.slot].element],
-      });
+      logs.push({ text: `${p1Name} deals ${f.p1Dmg} to ${p2Name}${ko ? " — KNOCKOUT!" : ""}`, color: ko ? "#ff2244" : COLORS[p1Cards[f.slot].element] });
     }
     if (f.p2Dmg > 0) {
       const ko = p1Hp[f.slot] <= 0;
-      logs.push({
-        text: `${p2Name} deals ${f.p2Dmg} to ${p1Name}${ko ? " — KNOCKOUT!" : ""}`,
-        color: ko ? "#ff2244" : COLORS[p2Cards[f.slot].element],
-      });
+      logs.push({ text: `${p2Name} deals ${f.p2Dmg} to ${p1Name}${ko ? " — KNOCKOUT!" : ""}`, color: ko ? "#ff2244" : COLORS[p2Cards[f.slot].element] });
     }
-    if (f.p1Action === "DEFEND" && p1Hp[f.slot] > 0) {
-      logs.push({ text: `${p1Name} defended + regen`, color: COLORS[p1Cards[f.slot].element] });
-    }
-    if (f.p2Action === "DEFEND" && p2Hp[f.slot] > 0) {
-      logs.push({ text: `${p2Name} defended + regen`, color: COLORS[p2Cards[f.slot].element] });
-    }
+    if (f.p1Action === "DEFEND" && p1Hp[f.slot] > 0) logs.push({ text: `${p1Name} defended + regen`, color: COLORS[p1Cards[f.slot].element] });
+    if (f.p2Action === "DEFEND" && p2Hp[f.slot] > 0) logs.push({ text: `${p2Name} defended + regen`, color: COLORS[p2Cards[f.slot].element] });
   }
-
   return logs;
 }
 
-export function useBattle(initialP1: BattleCard[], initialP2: BattleCard[]) {
+export function useBattle(
+  initialP1: BattleCard[],
+  initialP2: BattleCard[],
+  p1Strategy: Strategy,
+  p2Strategy: Strategy,
+) {
   const [p1Cards, setP1Cards] = useState<BattleCard[]>(initialP1);
   const [p2Cards, setP2Cards] = useState<BattleCard[]>(initialP2);
   const [turn, setTurn] = useState(0);
@@ -78,13 +70,11 @@ export function useBattle(initialP1: BattleCard[], initialP2: BattleCard[]) {
   const playTurn = useCallback(() => {
     if (settled) return null;
 
-    const result = simulateTurn(p1Cards, p2Cards);
+    const result = simulateTurn(p1Cards, p2Cards, p1Strategy, p2Strategy);
     const newTurn = turn + 1;
 
-    // Update card HP
     const newP1 = p1Cards.map((c, i) => ({ ...c, hp: result.p1Hp[i] }));
     const newP2 = p2Cards.map((c, i) => ({ ...c, hp: result.p2Hp[i] }));
-
     const logs = buildLogs(newTurn, result.fights, p1Cards, p2Cards, result.p1Hp, result.p2Hp);
 
     if (result.settled && result.winner) {
@@ -107,12 +97,7 @@ export function useBattle(initialP1: BattleCard[], initialP2: BattleCard[]) {
     setTurns(prev => [...prev, turnEvent]);
     setCurrentDecisions({ p1: result.p1Decisions, p2: result.p2Decisions });
 
-    if (result.settled) {
-      setSettled(true);
-      setWinner(result.winner);
-    }
-
-    // Check max turns
+    if (result.settled) { setSettled(true); setWinner(result.winner); }
     if (newTurn >= 20 && !result.settled) {
       setSettled(true);
       const p1Total = result.p1Hp.reduce((a, b) => a + b, 0);
@@ -121,16 +106,7 @@ export function useBattle(initialP1: BattleCard[], initialP2: BattleCard[]) {
     }
 
     return turnEvent;
-  }, [p1Cards, p2Cards, turn, settled]);
+  }, [p1Cards, p2Cards, turn, settled, p1Strategy, p2Strategy]);
 
-  return {
-    p1Cards,
-    p2Cards,
-    turn,
-    turns,
-    settled,
-    winner,
-    currentDecisions,
-    playTurn,
-  };
+  return { p1Cards, p2Cards, turn, turns, settled, winner, currentDecisions, playTurn };
 }

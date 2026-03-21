@@ -6,7 +6,8 @@ import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import Creature from "@/components/creatures";
 import { useBattle, type BattleCard, type TurnEvent } from "@/lib/useBattle";
-import type { Decision } from "@/lib/agent";
+import type { Decision, Strategy } from "@/lib/agent";
+import { STRATEGIES } from "@/lib/agent";
 
 const ELEMENT_COLORS = ["#ff4400", "#0088ff", "#ffaa00"];
 const CARD_NAMES = ["Inferno", "Frost Tide", "Volt Phantom"];
@@ -20,13 +21,17 @@ const INITIAL_P2: BattleCard[] = [
   { element: 1, atk: 5, def: 8, hp: 22, maxHp: 22 },
 ];
 
-type Phase = "waiting" | "thinking" | "fighting" | "damage" | "turnEnd" | "victory";
+type Phase = "picking" | "waiting" | "thinking" | "fighting" | "damage" | "turnEnd" | "victory";
 
 export default function BattleRoom() {
   const params = useParams();
-  const { p1Cards, p2Cards, turn, settled, winner, currentDecisions, playTurn } = useBattle(INITIAL_P1, INITIAL_P2);
+  const [p1Strategy, setP1Strategy] = useState<Strategy>("balanced");
+  const [started, setStarted] = useState(false);
+  const p2Strategy: Strategy = "balanced"; // opponent AI always balanced for demo
 
-  const [phase, setPhase] = useState<Phase>("waiting");
+  const { p1Cards, p2Cards, turn, settled, winner, currentDecisions, playTurn } = useBattle(INITIAL_P1, INITIAL_P2, p1Strategy, p2Strategy);
+
+  const [phase, setPhase] = useState<Phase>("picking");
   const [activeFight, setActiveFight] = useState<number>(0);
   const [dmg, setDmg] = useState<{ p1: number | null; p2: number | null }>({ p1: null, p2: null });
   const [shake, setShake] = useState(false);
@@ -37,9 +42,9 @@ export default function BattleRoom() {
   const [thinkingLine, setThinkingLine] = useState(0);
   const logRef = useRef<HTMLDivElement>(null);
 
-  // Auto-play loop
+  // Auto-play loop — only after strategy picked
   useEffect(() => {
-    if (phase !== "waiting") return;
+    if (phase !== "waiting" || !started) return;
     const timer = setTimeout(() => {
       const result = playTurn();
       if (!result) return;
@@ -49,7 +54,7 @@ export default function BattleRoom() {
       setThinkingLine(0);
     }, turn === 0 ? 2000 : 1500);
     return () => clearTimeout(timer);
-  }, [phase, turn, playTurn]);
+  }, [phase, turn, playTurn, started]);
 
   // Thinking phase — typewriter reveal of reasoning
   useEffect(() => {
@@ -129,6 +134,75 @@ export default function BattleRoom() {
   return (
     <div className={`flex flex-col flex-1 min-h-screen ${shake ? "animate-shake" : ""}`}>
       <Navbar />
+
+      {/* ═══ STRATEGY PICKER ═══ */}
+      {phase === "picking" && (
+        <main className="flex-1 flex items-center justify-center p-6">
+          <div className="max-w-2xl w-full space-y-10 text-center">
+            <div className="space-y-3">
+              <h1 className="font-[family-name:var(--font-press-start)] text-base text-white/90">
+                CHOOSE YOUR STRATEGY
+              </h1>
+              <p className="text-lg text-white/40">
+                Your AI agent will follow this strategy for the entire battle.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              {(Object.entries(STRATEGIES) as [Strategy, typeof STRATEGIES[Strategy]][]).map(([key, strat]) => (
+                <button
+                  key={key}
+                  onClick={() => setP1Strategy(key)}
+                  className={`pixel-border p-5 text-left space-y-3 cursor-pointer transition-all duration-200 ${
+                    p1Strategy === key
+                      ? "border-2 scale-[1.02]"
+                      : "opacity-60 hover:opacity-80"
+                  }`}
+                  style={{
+                    borderColor: p1Strategy === key ? strat.color : "rgba(255,255,255,0.1)",
+                    boxShadow: p1Strategy === key ? `0 0 20px ${strat.color}30` : "none",
+                  }}
+                >
+                  <div className="font-[family-name:var(--font-press-start)] text-[11px]" style={{ color: strat.color }}>
+                    {strat.name}
+                  </div>
+                  <p className="text-sm text-white/50 leading-6">
+                    {strat.desc}
+                  </p>
+                  {p1Strategy === key && (
+                    <div className="font-[family-name:var(--font-press-start)] text-[8px] text-white/80 pt-1">
+                      SELECTED
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Preview matchup */}
+            <div className="pixel-border p-4 flex items-center justify-center gap-8">
+              <div className="flex items-center gap-3">
+                <Creature element={INITIAL_P1[0].element} size={48} />
+                <Creature element={INITIAL_P1[1].element} size={48} />
+              </div>
+              <div className="font-[family-name:var(--font-press-start)] text-sm text-white/40">VS</div>
+              <div className="flex items-center gap-3">
+                <div style={{ transform: "scaleX(-1)" }}><Creature element={INITIAL_P2[0].element} size={48} /></div>
+                <div style={{ transform: "scaleX(-1)" }}><Creature element={INITIAL_P2[1].element} size={48} /></div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => { setStarted(true); setPhase("waiting"); }}
+              className="inline-block px-10 py-4 border-2 border-white/80 text-white font-[family-name:var(--font-press-start)] text-xs tracking-widest hover:bg-white hover:text-[#050505] transition-colors cursor-pointer"
+            >
+              START BATTLE
+            </button>
+          </div>
+        </main>
+      )}
+
+      {/* ═══ BATTLE UI ═══ */}
+      {phase !== "picking" && (
       <main className="flex-1 flex gap-3 p-4 max-w-7xl mx-auto w-full">
 
         {/* ═══ LEFT — Battle (arena + HP) ═══ */}
@@ -281,7 +355,12 @@ export default function BattleRoom() {
 
           {/* AI Reasoning panel */}
           <div className="pixel-border p-3">
-            <div className="font-[family-name:var(--font-press-start)] text-[9px] text-white/50 mb-3">AI AGENT REASONING</div>
+            <div className="flex items-center justify-between mb-3">
+              <span className="font-[family-name:var(--font-press-start)] text-[9px] text-white/50">AI REASONING</span>
+              <span className="font-[family-name:var(--font-press-start)] text-[8px] px-2 py-0.5 border" style={{ borderColor: STRATEGIES[p1Strategy].color, color: STRATEGIES[p1Strategy].color }}>
+                {STRATEGIES[p1Strategy].name}
+              </span>
+            </div>
             {displayDecisions ? (
               <div className="space-y-3">
                 {[0, 1].map(pi => {
@@ -351,6 +430,7 @@ export default function BattleRoom() {
           </div>
         </div>
       </main>
+      )}
 
       {/* Victory */}
       {isVictory && winner && (

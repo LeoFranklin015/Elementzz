@@ -1,7 +1,8 @@
-// CardBattle AI Agent — runs entirely client-side
-// Decides ATTACK or DEFEND based on game state
+// Elementzz AI Agent — runs entirely client-side
+// Decides ATTACK or DEFEND based on strategy + game state
 
 export type Action = "ATTACK" | "DEFEND";
+export type Strategy = "aggressive" | "balanced" | "defensive";
 
 export interface CardState {
   element: 0 | 1 | 2; // Fire, Water, Lightning
@@ -17,8 +18,25 @@ export interface Decision {
   confidence: number; // 0-100
 }
 
+export const STRATEGIES: Record<Strategy, { name: string; desc: string; color: string }> = {
+  aggressive: {
+    name: "BERSERKER",
+    desc: "All-out attack. Only defends when about to die. High risk, high reward.",
+    color: "#ff4400",
+  },
+  balanced: {
+    name: "TACTICIAN",
+    desc: "Reads the matchup. Presses advantages, defends when outmatched.",
+    color: "#ffaa00",
+  },
+  defensive: {
+    name: "GUARDIAN",
+    desc: "Plays safe. Defends often, regens HP, waits for openings to strike.",
+    color: "#0088ff",
+  },
+};
+
 // Elemental multiplier table (scaled x100)
-// [attacker][defender]
 const MULT: Record<number, Record<number, number>> = {
   0: { 0: 120, 1: 50, 2: 200 },  // Fire
   1: { 0: 200, 1: 120, 2: 50 },   // Water
@@ -37,17 +55,48 @@ export function calcDamage(attacker: CardState, defender: CardState, defenderDef
   return net;
 }
 
-export function decide(my: CardState, opp: CardState): Decision {
+// ── AGGRESSIVE strategy ──────────────────────────────────────────────
+function decideAggressive(my: CardState, opp: CardState): Decision {
   const reasoning: string[] = [];
-
-  const myMult = MULT[my.element][opp.element];
-  const oppMult = MULT[opp.element][my.element];
-
   const myDmg = calcDamage(my, opp, false);
-  const myDmgIfDefend = calcDamage(my, opp, true); // if opp defends, we still deal this
   const incomingDmg = calcDamage(opp, my, false);
-  const incomingIfDefend = calcDamage(opp, my, true); // if we defend
+  const incomingIfDefend = calcDamage(opp, my, true);
+  const canKill = myDmg >= opp.hp;
+  const wouldDie = incomingDmg >= my.hp;
+  const surviveIfDefend = incomingIfDefend < my.hp;
 
+  if (canKill) {
+    reasoning.push(`Lethal! ${myDmg} dmg kills (${opp.hp} HP)`);
+    reasoning.push("FINISH THEM");
+    return { action: "ATTACK", reasoning, confidence: 99 };
+  }
+
+  // Only defend if literally about to die AND defending saves
+  if (wouldDie && surviveIfDefend && my.hp <= 3) {
+    reasoning.push(`Critical HP (${my.hp}) — one hit kill`);
+    reasoning.push(`Defending to survive: ${incomingIfDefend} dmg`);
+    reasoning.push("LAST RESORT DEFEND");
+    return { action: "DEFEND", reasoning, confidence: 80 };
+  }
+
+  // Everything else: ATTACK
+  if (wouldDie) {
+    reasoning.push(`Taking ${incomingDmg} dmg but won't back down`);
+    reasoning.push("NO RETREAT");
+  } else {
+    reasoning.push(`Dealing ${myDmg} dmg, taking ${incomingDmg}`);
+    reasoning.push("ALWAYS ATTACK");
+  }
+  return { action: "ATTACK", reasoning, confidence: 90 };
+}
+
+// ── BALANCED strategy ────────────────────────────────────────────────
+function decideBalanced(my: CardState, opp: CardState): Decision {
+  const reasoning: string[] = [];
+  const myMult = MULT[my.element][opp.element];
+  const myDmg = calcDamage(my, opp, false);
+  const incomingDmg = calcDamage(opp, my, false);
+  const incomingIfDefend = calcDamage(opp, my, true);
   const hpRatio = my.hp / my.maxHp;
   const canKill = myDmg >= opp.hp;
   const wouldDie = incomingDmg >= my.hp;
@@ -55,67 +104,110 @@ export function decide(my: CardState, opp: CardState): Decision {
   const hasAdvantage = myMult === 200;
   const hasDisadvantage = myMult === 50;
 
-  // Rule 1: Can kill → always attack
   if (canKill) {
-    reasoning.push(`Can kill opponent (${myDmg} dmg vs ${opp.hp} HP)`);
+    reasoning.push(`Can kill (${myDmg} dmg vs ${opp.hp} HP)`);
     reasoning.push("GO FOR THE KILL");
     return { action: "ATTACK", reasoning, confidence: 95 };
   }
 
-  // Rule 2: Would die from attack AND defending saves us → defend
   if (wouldDie && surviveIfDefend) {
-    reasoning.push(`Incoming ${incomingDmg} dmg would kill (${my.hp} HP)`);
-    reasoning.push(`Defending reduces to ${incomingIfDefend} dmg — survive`);
+    reasoning.push(`Incoming ${incomingDmg} would kill (${my.hp} HP)`);
+    reasoning.push(`Defend reduces to ${incomingIfDefend} — survive`);
     reasoning.push("DEFEND TO SURVIVE");
     return { action: "DEFEND", reasoning, confidence: 90 };
   }
 
-  // Rule 3: Would die either way → attack (go down swinging)
   if (wouldDie && !surviveIfDefend) {
-    reasoning.push(`Will die regardless (${incomingDmg} vs ${my.hp} HP)`);
+    reasoning.push(`Will die regardless — ${incomingDmg} vs ${my.hp} HP`);
     reasoning.push("GO DOWN SWINGING");
     return { action: "ATTACK", reasoning, confidence: 85 };
   }
 
-  // Rule 4: Elemental advantage → attack aggressively
   if (hasAdvantage) {
-    reasoning.push(`${ELEMENT_NAMES[my.element]} has 2x advantage vs ${ELEMENT_NAMES[opp.element]}`);
-    reasoning.push(`Dealing ${myDmg} dmg per hit`);
-    reasoning.push("PRESS THE ADVANTAGE");
+    reasoning.push(`${ELEMENT_NAMES[my.element]} 2x vs ${ELEMENT_NAMES[opp.element]}`);
+    reasoning.push(`Dealing ${myDmg} per hit`);
+    reasoning.push("PRESS ADVANTAGE");
     return { action: "ATTACK", reasoning, confidence: 80 };
   }
 
-  // Rule 5: Low HP + disadvantage → defend and regen
   if (hpRatio < 0.35 && hasDisadvantage) {
-    reasoning.push(`Low HP (${Math.round(hpRatio * 100)}%) with elemental disadvantage`);
-    reasoning.push(`Defending: take ${incomingIfDefend} instead of ${incomingDmg}, regen +2`);
+    reasoning.push(`Low HP (${Math.round(hpRatio * 100)}%) + disadvantage`);
     reasoning.push("TURTLE AND REGEN");
     return { action: "DEFEND", reasoning, confidence: 70 };
   }
 
-  // Rule 6: Good damage output → attack
   if (myDmg >= 4) {
-    reasoning.push(`Solid damage output: ${myDmg} per hit`);
-    reasoning.push(`Opponent at ${opp.hp}/${opp.maxHp} HP — ${Math.ceil(opp.hp / myDmg)} hits to kill`);
+    reasoning.push(`Good output: ${myDmg}/hit, ${Math.ceil(opp.hp / myDmg)} hits to kill`);
     reasoning.push("KEEP HITTING");
     return { action: "ATTACK", reasoning, confidence: 65 };
   }
 
-  // Rule 7: Low damage + healthy → defend to outlast
   if (myDmg <= 2 && hpRatio > 0.6) {
     reasoning.push(`Low damage (${myDmg}) — not worth trading`);
-    reasoning.push(`Healthy at ${Math.round(hpRatio * 100)}% — can afford to wait`);
     reasoning.push("PLAY DEFENSIVE");
     return { action: "DEFEND", reasoning, confidence: 55 };
   }
 
-  // Default: attack
-  reasoning.push(`Standard play — dealing ${myDmg}, taking ${incomingDmg}`);
+  reasoning.push(`Dealing ${myDmg}, taking ${incomingDmg}`);
   reasoning.push("ATTACK BY DEFAULT");
   return { action: "ATTACK", reasoning, confidence: 50 };
 }
 
-// Simulate a full turn and return results
+// ── DEFENSIVE strategy ───────────────────────────────────────────────
+function decideDefensive(my: CardState, opp: CardState): Decision {
+  const reasoning: string[] = [];
+  const myMult = MULT[my.element][opp.element];
+  const myDmg = calcDamage(my, opp, false);
+  const incomingDmg = calcDamage(opp, my, false);
+  const incomingIfDefend = calcDamage(opp, my, true);
+  const hpRatio = my.hp / my.maxHp;
+  const canKill = myDmg >= opp.hp;
+  const hasAdvantage = myMult === 200;
+
+  // Always take the kill
+  if (canKill) {
+    reasoning.push(`Lethal available: ${myDmg} vs ${opp.hp} HP`);
+    reasoning.push("STRIKE NOW");
+    return { action: "ATTACK", reasoning, confidence: 95 };
+  }
+
+  // Strong advantage + opp is low → attack to close it out
+  if (hasAdvantage && opp.hp <= opp.maxHp * 0.4) {
+    reasoning.push(`Advantage + opp low (${opp.hp}/${opp.maxHp})`);
+    reasoning.push("PRESS FOR THE FINISH");
+    return { action: "ATTACK", reasoning, confidence: 75 };
+  }
+
+  // If healthy and damage is decent, occasionally attack
+  if (hpRatio > 0.7 && myDmg >= 5 && hasAdvantage) {
+    reasoning.push(`Healthy (${Math.round(hpRatio * 100)}%) with advantage`);
+    reasoning.push(`Dealing ${myDmg} — worth the trade`);
+    reasoning.push("CALCULATED STRIKE");
+    return { action: "ATTACK", reasoning, confidence: 65 };
+  }
+
+  // Default: DEFEND
+  const saved = incomingDmg - incomingIfDefend;
+  reasoning.push(`Defending: take ${incomingIfDefend} instead of ${incomingDmg} (save ${saved})`);
+  reasoning.push(`Regen +2 HP, net loss: ${Math.max(0, incomingIfDefend - 2)}`);
+  if (hpRatio < 0.5) {
+    reasoning.push("HOLD THE LINE");
+  } else {
+    reasoning.push("PATIENCE WINS");
+  }
+  return { action: "DEFEND", reasoning, confidence: 80 };
+}
+
+// ── Main decide function with strategy ───────────────────────────────
+export function decide(my: CardState, opp: CardState, strategy: Strategy = "balanced"): Decision {
+  switch (strategy) {
+    case "aggressive": return decideAggressive(my, opp);
+    case "balanced": return decideBalanced(my, opp);
+    case "defensive": return decideDefensive(my, opp);
+  }
+}
+
+// ── Simulate a full turn ─────────────────────────────────────────────
 export interface TurnResult {
   p1Hp: number[];
   p2Hp: number[];
@@ -137,12 +229,14 @@ export interface TurnResult {
 export function simulateTurn(
   p1Cards: CardState[],
   p2Cards: CardState[],
+  p1Strategy: Strategy = "balanced",
+  p2Strategy: Strategy = "balanced",
 ): TurnResult {
   const p1Decisions = p1Cards.map((c, i) =>
-    c.hp > 0 ? decide(c, p2Cards[i]) : { action: "ATTACK" as Action, reasoning: ["DEAD"], confidence: 0 }
+    c.hp > 0 ? decide(c, p2Cards[i], p1Strategy) : { action: "ATTACK" as Action, reasoning: ["DEAD"], confidence: 0 }
   );
   const p2Decisions = p2Cards.map((c, i) =>
-    c.hp > 0 ? decide(c, p1Cards[i]) : { action: "ATTACK" as Action, reasoning: ["DEAD"], confidence: 0 }
+    c.hp > 0 ? decide(c, p1Cards[i], p2Strategy) : { action: "ATTACK" as Action, reasoning: ["DEAD"], confidence: 0 }
   );
 
   const p1Hp = [...p1Cards.map(c => c.hp)];
@@ -152,18 +246,12 @@ export function simulateTurn(
   for (let i = 0; i < 2; i++) {
     if (p1Hp[i] <= 0 && p2Hp[i] <= 0) continue;
 
-    const p1Dmg = p1Hp[i] > 0
-      ? calcDamage(p1Cards[i], p2Cards[i], p2Decisions[i].action === "DEFEND")
-      : 0;
-    const p2Dmg = p2Hp[i] > 0
-      ? calcDamage(p2Cards[i], p1Cards[i], p1Decisions[i].action === "DEFEND")
-      : 0;
+    const p1Dmg = p1Hp[i] > 0 ? calcDamage(p1Cards[i], p2Cards[i], p2Decisions[i].action === "DEFEND") : 0;
+    const p2Dmg = p2Hp[i] > 0 ? calcDamage(p2Cards[i], p1Cards[i], p1Decisions[i].action === "DEFEND") : 0;
 
-    // Apply damage simultaneously
     p1Hp[i] = Math.max(0, p1Hp[i] - p2Dmg);
     p2Hp[i] = Math.max(0, p2Hp[i] - p1Dmg);
 
-    // Defend regen (+2, capped at max)
     if (p1Decisions[i].action === "DEFEND" && p1Hp[i] > 0) {
       p1Hp[i] = Math.min(p1Cards[i].maxHp, p1Hp[i] + 2);
     }
@@ -171,37 +259,20 @@ export function simulateTurn(
       p2Hp[i] = Math.min(p2Cards[i].maxHp, p2Hp[i] + 2);
     }
 
-    fights.push({
-      slot: i,
-      p1Dmg,
-      p2Dmg,
-      p1Action: p1Decisions[i].action,
-      p2Action: p2Decisions[i].action,
-      p1Dead: p1Hp[i] <= 0,
-      p2Dead: p2Hp[i] <= 0,
-    });
+    fights.push({ slot: i, p1Dmg, p2Dmg, p1Action: p1Decisions[i].action, p2Action: p2Decisions[i].action, p1Dead: p1Hp[i] <= 0, p2Dead: p2Hp[i] <= 0 });
   }
 
-  // Check win conditions
   const p1AllDead = p1Hp.every(h => h <= 0);
   const p2AllDead = p2Hp.every(h => h <= 0);
-
-  // Stalemate check
   const stalemate = p1Hp.every((h, i) => !(h > 0 && p2Hp[i] > 0));
 
   let settled = false;
   let winner: TurnResult["winner"] = null;
 
-  if (p1AllDead && p2AllDead) {
-    settled = true;
-    winner = "draw";
-  } else if (p1AllDead) {
-    settled = true;
-    winner = "p2";
-  } else if (p2AllDead) {
-    settled = true;
-    winner = "p1";
-  } else if (stalemate) {
+  if (p1AllDead && p2AllDead) { settled = true; winner = "draw"; }
+  else if (p1AllDead) { settled = true; winner = "p2"; }
+  else if (p2AllDead) { settled = true; winner = "p1"; }
+  else if (stalemate) {
     settled = true;
     const p1Total = p1Hp.reduce((a, b) => a + b, 0);
     const p2Total = p2Hp.reduce((a, b) => a + b, 0);
