@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 import { useGrantPermissions } from "@jaw.id/wagmi";
 import { type Address } from "viem";
-import { getOrCreateSessionKey, setStoredPermissionId } from "./sessionKey";
+import { getOrCreateSessionAccount, setStoredPermissionId } from "./sessionKey";
 import { BATTLE_ROOM, MOCK_USDC } from "./contracts";
 
 export function useGrantSessionPermissions() {
@@ -13,11 +13,13 @@ export function useGrantSessionPermissions() {
   const grant = useCallback(async (card1: Address, card2: Address) => {
     setError(null);
     try {
-      const sessionKey = getOrCreateSessionKey();
+      // Get the JAW smart account address from the session key
+      const { smartAddress } = await getOrCreateSessionAccount();
+      console.log("Granting permissions to session smart account:", smartAddress);
 
       const result = await grantPermissions({
         expiry: Math.floor(Date.now() / 1000) + 7200, // 2 hours
-        spender: sessionKey.address,
+        spender: smartAddress,
         permissions: {
           calls: [
             // USDC operations
@@ -44,7 +46,6 @@ export function useGrantSessionPermissions() {
       if (result?.permissionId) {
         setStoredPermissionId(result.permissionId);
         console.log("Permission granted:", result.permissionId);
-        console.log("Session key:", sessionKey.address);
         return result.permissionId;
       }
 

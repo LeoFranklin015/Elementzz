@@ -6,17 +6,18 @@ import { useAccount } from "wagmi";
 import { formatUnits } from "viem";
 import ConnectButton from "./ConnectButton";
 import { useUsdcBalance } from "@/lib/useOnboard";
-import { getOrCreateSessionKey } from "@/lib/sessionKey";
+import { getOrCreateSessionAccount } from "@/lib/sessionKey";
 
 export default function Navbar() {
   const { address, isConnected } = useAccount();
   const { data: usdcBal } = useUsdcBalance(address);
 
-  // Generate session key once connected
+  // Generate session key smart account once connected
   useEffect(() => {
     if (isConnected) {
-      const sk = getOrCreateSessionKey();
-      console.log("Session key ready:", sk.address);
+      getOrCreateSessionAccount().then(({ smartAddress }) => {
+        console.log("Session key smart account ready:", smartAddress);
+      }).catch(console.error);
     }
   }, [isConnected]);
 
