@@ -2,7 +2,24 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useAccount } from "wagmi";
 import Creature from "@/components/creatures";
+import ConnectButton from "@/components/ConnectButton";
+
+function HeroAction() {
+  const { isConnected } = useAccount();
+  if (isConnected) {
+    return (
+      <Link
+        href="/onboard"
+        className="inline-block px-10 py-4 border-2 border-white/80 text-white font-[family-name:var(--font-press-start)] text-xs tracking-widest hover:bg-white hover:text-[#050505] transition-colors cursor-pointer"
+      >
+        ENTER GAME
+      </Link>
+    );
+  }
+  return <ConnectButton size="lg" />;
+}
 
 export default function Home() {
   const [step, setStep] = useState(0);
@@ -102,12 +119,7 @@ export default function Home() {
             step >= 4 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
           }`}
         >
-          <Link
-            href="/onboard"
-            className="inline-block px-10 py-4 border-2 border-white/80 text-white font-[family-name:var(--font-press-start)] text-xs tracking-widest hover:bg-white hover:text-[#050505] transition-colors duration-200 cursor-pointer"
-          >
-            PLAY NOW
-          </Link>
+          <HeroAction />
         </div>
 
         {/* Elemental triangle — subtle, below CTA */}
