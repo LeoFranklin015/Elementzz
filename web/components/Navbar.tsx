@@ -1,9 +1,25 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
+import { useAccount } from "wagmi";
+import { formatUnits } from "viem";
 import ConnectButton from "./ConnectButton";
+import { useUsdcBalance } from "@/lib/useOnboard";
+import { getOrCreateSessionKey } from "@/lib/sessionKey";
 
 export default function Navbar() {
+  const { address, isConnected } = useAccount();
+  const { data: usdcBal } = useUsdcBalance(address);
+
+  // Generate session key once connected
+  useEffect(() => {
+    if (isConnected) {
+      const sk = getOrCreateSessionKey();
+      console.log("Session key ready:", sk.address);
+    }
+  }, [isConnected]);
+
   return (
     <nav className="w-full border-b-2 border-white/10 bg-[#0a0a0a] px-6 py-3 flex items-center justify-between">
       <Link
@@ -18,7 +34,19 @@ export default function Navbar() {
       >
         ELEMENTZZ
       </Link>
+
       <div className="flex items-center gap-4">
+        {isConnected && address && usdcBal !== undefined && (
+          <>
+            <div className="flex items-center gap-2">
+              <span className="font-[family-name:var(--font-press-start)] text-[10px] text-white">
+                {formatUnits(usdcBal, 6)}
+              </span>
+              <span className="text-white/50 text-xs">USDC</span>
+            </div>
+            <div className="w-px h-4 bg-white/15" />
+          </>
+        )}
         <ConnectButton />
       </div>
     </nav>

@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@layer jaw;
 
 :root {
   --bg: #050505;

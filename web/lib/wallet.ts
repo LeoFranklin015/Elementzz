@@ -1,6 +1,4 @@
 import { jaw } from "@jaw.id/wagmi";
-import { Mode } from "@jaw.id/core";
-import { ReactUIHandler } from "@jaw.id/ui";
 import { http, createConfig } from "wagmi";
 import { baseSepolia, avalancheFuji } from "wagmi/chains";
 
@@ -13,9 +11,7 @@ export const jawConnect = jaw({
   defaultChainId: baseSepolia.id,
   ens: "elementzz.eth",
   preference: {
-    mode: Mode.AppSpecific,
     showTestnets: true,
-    uiHandler: new ReactUIHandler(),
   },
 });
 

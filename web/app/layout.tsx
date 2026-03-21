@@ -27,9 +27,6 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${pressStart.variable} ${vt323.variable} h-full`}>
-      <head>
-        <link rel="stylesheet" href="/jaw-ui-scoped.css" />
-      </head>
       <body className="min-h-full flex flex-col scanlines crt">
         <Providers>{children}</Providers>
       </body>
