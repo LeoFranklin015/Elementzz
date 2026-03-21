@@ -84,7 +84,12 @@ contract CardAgent {
     ///      msg.sender in the target contract will be this CardAgent's address.
     function execute(address target, bytes calldata data) external onlyOwner returns (bytes memory) {
         (bool success, bytes memory result) = target.call(data);
-        require(success, "execution failed");
+        if (!success) {
+            // Forward the inner revert reason
+            assembly {
+                revert(add(result, 32), mload(result))
+            }
+        }
         return result;
     }
 }

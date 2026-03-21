@@ -29,6 +29,11 @@ function addrLink(addr: string) {
   return `${EXPLORER}/address/${addr}`;
 }
 
+// Sleep helper for network propagation
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function main() {
   const { viem } = await network.connect();
   const publicClient = await viem.getPublicClient();
@@ -43,28 +48,7 @@ async function main() {
   console.log("Player 2 :", player2.account.address, addrLink(player2.account.address));
   console.log();
 
-  // ─── 1. Deploy contracts ─────────────────────────────────────────────
-  console.log("─── Step 1: Deploying contracts ───");
-
-  console.log("Deploying MockUSDC...");
-  const usdc = await viem.deployContract("MockUSDC");
-  console.log("  MockUSDC:", usdc.address, addrLink(usdc.address));
-
-  console.log("Deploying CardFactory (with ERC-8004 registry)...");
-  const factory = await viem.deployContract("CardFactory", [IDENTITY_REGISTRY]);
-  console.log("  CardFactory:", factory.address, addrLink(factory.address));
-
-  console.log("Deploying BattleRoom...");
-  const battleRoom = await viem.deployContract("BattleRoom", [usdc.address, factory.address]);
-  console.log("  BattleRoom:", battleRoom.address, addrLink(battleRoom.address));
-
-  console.log("Allowing BattleRoom in factory...");
-  let hash = await factory.write.allowRoom([battleRoom.address]);
-  console.log("  tx:", txLink(hash));
-  await publicClient.waitForTransactionReceipt({ hash });
-  console.log();
-
-  // Helper to write as a specific wallet
+  // Helper: send tx as a specific wallet, wait for confirmation, throw on revert
   async function writeAs(wallet: any, contract: { address: Address; abi: any }, fn: string, args: any[] = []) {
     const h = await wallet.writeContract({
       address: contract.address,
@@ -72,20 +56,73 @@ async function main() {
       functionName: fn,
       args,
     });
-    await publicClient.waitForTransactionReceipt({ hash: h });
+    console.log(`    waiting for confirmation...`);
+    const receipt = await publicClient.waitForTransactionReceipt({ hash: h, confirmations: 2 });
+    if (receipt.status === "reverted") {
+      throw new Error(`TX REVERTED: ${fn}() — ${txLink(h)}`);
+    }
+    console.log(`    confirmed in block ${receipt.blockNumber}`);
     return h;
   }
+
+  // Helper: deploy contract, wait for confirmation
+  async function deploy(name: string, args: any[] = []) {
+    console.log(`  Deploying ${name}...`);
+    const hash = await deployer.deployContract({
+      abi: (await import(`../artifacts/contracts/${getPath(name)}.sol/${name}.json`, { with: { type: "json" } })).default.abi,
+      bytecode: (await import(`../artifacts/contracts/${getPath(name)}.sol/${name}.json`, { with: { type: "json" } })).default.bytecode as `0x${string}`,
+      args,
+    });
+    console.log(`    tx: ${txLink(hash)}`);
+    console.log(`    waiting for confirmation...`);
+    const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: 2 });
+    if (receipt.status === "reverted" || !receipt.contractAddress) {
+      throw new Error(`DEPLOY REVERTED: ${name} — ${txLink(hash)}`);
+    }
+    console.log(`    confirmed at ${receipt.contractAddress} (block ${receipt.blockNumber})`);
+    const contract = await viem.getContractAt(name, receipt.contractAddress);
+    return contract;
+  }
+
+  function getPath(name: string): string {
+    if (name === "MockUSDC") return "mocks/MockUSDC";
+    if (name === "BattleRoomHarness") return "test/BattleRoomHarness";
+    return name;
+  }
+
+  // ─── 1. Deploy contracts ─────────────────────────────────────────────
+  console.log("─── Step 1: Deploying contracts ───");
+  console.log();
+
+  const usdc = await deploy("MockUSDC");
+  console.log();
+
+  const factory = await deploy("CardFactory", [IDENTITY_REGISTRY]);
+  console.log();
+
+  const battleRoom = await deploy("BattleRoom", [usdc.address, factory.address]);
+  console.log();
+
+  console.log("  Allowing BattleRoom in factory...");
+  let hash = await factory.write.allowRoom([battleRoom.address]);
+  console.log(`    tx: ${txLink(hash)}`);
+  console.log(`    waiting for confirmation...`);
+  let receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: 2 });
+  console.log(`    confirmed (block ${receipt.blockNumber})`);
+  console.log();
 
   // ─── 2. Mint USDC to players ─────────────────────────────────────────
   console.log("─── Step 2: Minting MockUSDC to players ───");
 
   hash = await usdc.write.mint([player1.account.address, STAKE * 10n]);
-  await publicClient.waitForTransactionReceipt({ hash });
-  console.log(`  Minted ${formatUnits(STAKE * 10n, 6)} USDC to Player 1 — tx: ${txLink(hash)}`);
+  console.log(`  Minting to Player 1... tx: ${txLink(hash)}`);
+  await publicClient.waitForTransactionReceipt({ hash, confirmations: 2 });
+  console.log(`    confirmed`);
 
   hash = await usdc.write.mint([player2.account.address, STAKE * 10n]);
-  await publicClient.waitForTransactionReceipt({ hash });
-  console.log(`  Minted ${formatUnits(STAKE * 10n, 6)} USDC to Player 2 — tx: ${txLink(hash)}`);
+  console.log(`  Minting to Player 2... tx: ${txLink(hash)}`);
+  await publicClient.waitForTransactionReceipt({ hash, confirmations: 2 });
+  console.log(`    confirmed`);
   console.log();
 
   // ─── 3. Players approve BattleRoom ───────────────────────────────────
@@ -101,25 +138,44 @@ async function main() {
   // ─── 4. Onboard players (mint 2 cards each) ─────────────────────────
   console.log("─── Step 4: Onboarding players (2 cards each) ───");
 
-  const ELEMENTS = ["Fire 🔥", "Water 💧", "Lightning ⚡"];
+  const ELEMENTS = ["Fire", "Water", "Lightning"];
 
+  console.log("  Player 1 onboarding...");
   hash = await writeAs(player1, factory, "onboard");
   console.log(`  Player 1 onboarded — tx: ${txLink(hash)}`);
-  const [p1Card1, p1Card2] = await factory.read.getCards([player1.account.address]);
 
+  // Wait a beat for state to propagate then read cards
+  await sleep(2000);
+  const [p1Card1, p1Card2] = await factory.read.getCards([player1.account.address]);
+  console.log(`  P1 Card 0: ${p1Card1}`);
+  console.log(`  P1 Card 1: ${p1Card2}`);
+
+  console.log("  Player 2 onboarding...");
   hash = await writeAs(player2, factory, "onboard");
   console.log(`  Player 2 onboarded — tx: ${txLink(hash)}`);
+
+  await sleep(2000);
   const [p2Card1, p2Card2] = await factory.read.getCards([player2.account.address]);
+  console.log(`  P2 Card 0: ${p2Card1}`);
+  console.log(`  P2 Card 1: ${p2Card2}`);
+
+  // Validate cards deployed
+  if (p1Card1 === "0x0000000000000000000000000000000000000000") {
+    throw new Error("Player 1 cards not found — onboard may have reverted on-chain");
+  }
+  if (p2Card1 === "0x0000000000000000000000000000000000000000") {
+    throw new Error("Player 2 cards not found — onboard may have reverted on-chain");
+  }
 
   // Read card stats
   async function printCard(label: string, addr: Address) {
     const card = await viem.getContractAt("CardAgent", addr);
     const el = Number(await card.read.element());
     const atk = await card.read.atk();
-    const def = await card.read.def();
+    const def_ = await card.read.def();
     const hp = await card.read.hp();
-    console.log(`  ${label}: ${ELEMENTS[el]}  ATK=${atk} DEF=${def} HP=${hp}  ${addrLink(addr)}`);
-    return { element: el, atk: Number(atk), def: Number(def), hp: Number(hp) };
+    console.log(`  ${label}: ${ELEMENTS[el]}  ATK=${atk} DEF=${def_} HP=${hp}  ${addrLink(addr)}`);
+    return { element: el, atk: Number(atk), def: Number(def_), hp: Number(hp) };
   }
 
   console.log();
@@ -155,27 +211,43 @@ async function main() {
     2: { 0: 50, 1: 175, 2: 100 },
   };
 
-  // Simple agent decision logic (from spec)
-  function decide(
+  // Player 1 is aggressive, Player 2 is defensive — breaks mirror symmetry
+  function decideP1(
     my: { element: number; atk: number; def: number; hp: number; maxHp: number },
     opp: { element: number; atk: number; def: number; hp: number }
   ): "attack" | "defend" {
     const myMult = MULT[my.element][opp.element];
     const rawAtk = Math.floor((my.atk * myMult) / 100);
     const myDamage = Math.max(1, rawAtk - opp.def);
-
     const oppMult = MULT[opp.element][my.element];
     const oppRawAtk = Math.floor((opp.atk * oppMult) / 100);
     const incomingDmg = Math.max(1, oppRawAtk - my.def);
 
+    // Aggressive: only defend if literally about to die
+    if (incomingDmg >= my.hp && my.hp <= 3) return "defend";
+    return "attack";
+  }
+
+  function decideP2(
+    my: { element: number; atk: number; def: number; hp: number; maxHp: number },
+    opp: { element: number; atk: number; def: number; hp: number }
+  ): "attack" | "defend" {
+    const myMult = MULT[my.element][opp.element];
+    const rawAtk = Math.floor((my.atk * myMult) / 100);
+    const myDamage = Math.max(1, rawAtk - opp.def);
+    const oppMult = MULT[opp.element][my.element];
+    const oppRawAtk = Math.floor((opp.atk * oppMult) / 100);
+    const incomingDmg = Math.max(1, oppRawAtk - my.def);
+
+    // Defensive: defend when low, press advantage when strong
     if (incomingDmg >= my.hp) return "defend";
     if (my.hp / my.maxHp < 0.3 && myDamage < opp.hp) return "defend";
     if (myMult === 175) return "attack";
     if (myDamage >= 3) return "attack";
-    return "defend";
+    // Mix it up — alternate attack/defend based on HP parity
+    return my.hp % 2 === 0 ? "attack" : "defend";
   }
 
-  // Track HP locally for decision making
   const hp = {
     p1: [p1c0Stats.hp, p1c1Stats.hp],
     p2: [p2c0Stats.hp, p2c1Stats.hp],
@@ -192,70 +264,63 @@ async function main() {
 
   for (let t = 1; t <= 20; t++) {
     const currentState = await battleRoom.read.state();
-    if (currentState !== 1) break; // not ACTIVE
+    if (currentState !== 1) break;
 
-    console.log(`  ── Turn ${t} ──`);
+    console.log(`  == Turn ${t} ==`);
     console.log(`    HP: P1[${hp.p1[0]}, ${hp.p1[1]}] vs P2[${hp.p2[0]}, ${hp.p2[1]}]`);
 
-    // Decide and submit actions for each alive card
+    // P1 cards submit actions (aggressive strategy)
     for (let i = 0; i < 2; i++) {
       if (hp.p1[i] <= 0) continue;
-      const action = decide(
+      const action = decideP1(
         { ...p1Stats[i], hp: hp.p1[i], maxHp: maxHp.p1[i] },
         { ...p2Stats[i], hp: hp.p2[i] }
       );
       console.log(`    P1 Card ${i} (${ELEMENTS[p1Stats[i].element]}): ${action.toUpperCase()}`);
 
       const card = await viem.getContractAt("CardAgent", p1Cards[i]);
-      const calldata = encodeFunctionData({
-        abi: battleAbi,
-        functionName: action,
-      });
+      const calldata = encodeFunctionData({ abi: battleAbi, functionName: action });
       hash = await writeAs(player1, card, "execute", [battleRoom.address, calldata]);
-      console.log(`      tx: ${txLink(hash)}`);
     }
 
-    // Check if still active (might have resolved mid-turn if P1 submitted last)
-    if ((await battleRoom.read.state()) !== 1) break;
+    // Check if resolved after P1
+    if ((await battleRoom.read.state()) !== 1) {
+      console.log(`    >> Battle resolved after P1 actions`);
+      break;
+    }
 
+    // P2 cards submit actions (defensive strategy)
     for (let i = 0; i < 2; i++) {
       if (hp.p2[i] <= 0) continue;
-      const action = decide(
+      const action = decideP2(
         { ...p2Stats[i], hp: hp.p2[i], maxHp: maxHp.p2[i] },
         { ...p1Stats[i], hp: hp.p1[i] }
       );
       console.log(`    P2 Card ${i} (${ELEMENTS[p2Stats[i].element]}): ${action.toUpperCase()}`);
 
       const card = await viem.getContractAt("CardAgent", p2Cards[i]);
-      const calldata = encodeFunctionData({
-        abi: battleAbi,
-        functionName: action,
-      });
+      const calldata = encodeFunctionData({ abi: battleAbi, functionName: action });
       hash = await writeAs(player2, card, "execute", [battleRoom.address, calldata]);
-      console.log(`      tx: ${txLink(hash)}`);
     }
 
-    // Read updated HP from TurnComplete event
-    const events = await publicClient.getContractEvents({
-      address: battleRoom.address,
-      abi: battleRoom.abi,
-      eventName: "TurnComplete",
-      fromBlock: BigInt(0),
-    });
+    // Read updated HP from on-chain slot data
+    await sleep(2000);
+    const p1s0 = await battleRoom.read.getP1Slot([0n]);
+    const p1s1 = await battleRoom.read.getP1Slot([1n]);
+    const p2s0 = await battleRoom.read.getP2Slot([0n]);
+    const p2s1 = await battleRoom.read.getP2Slot([1n]);
 
-    const lastEvent = events[events.length - 1];
-    if (lastEvent) {
-      hp.p1[0] = Number(lastEvent.args.p1hp0);
-      hp.p1[1] = Number(lastEvent.args.p1hp1);
-      hp.p2[0] = Number(lastEvent.args.p2hp0);
-      hp.p2[1] = Number(lastEvent.args.p2hp1);
-    }
+    hp.p1[0] = Number(p1s0[4]); // hp is at index 4
+    hp.p1[1] = Number(p1s1[4]);
+    hp.p2[0] = Number(p2s0[4]);
+    hp.p2[1] = Number(p2s1[4]);
 
-    console.log(`    → After turn: P1[${hp.p1[0]}, ${hp.p1[1]}] vs P2[${hp.p2[0]}, ${hp.p2[1]}]`);
+    console.log(`    >> After turn ${t}: P1[${hp.p1[0]}, ${hp.p1[1]}] vs P2[${hp.p2[0]}, ${hp.p2[1]}]`);
     console.log();
   }
 
   // ─── 8. Results ──────────────────────────────────────────────────────
+  console.log();
   console.log("─── Step 8: RESULTS ───");
   console.log();
 
@@ -278,16 +343,15 @@ async function main() {
     if (winner === "0x0000000000000000000000000000000000000000") {
       console.log("  Result: DRAW — both players refunded");
     } else if (winner.toLowerCase() === player1.account.address.toLowerCase()) {
-      console.log("  Winner: PLAYER 1", player1.account.address);
+      console.log("  WINNER: PLAYER 1", player1.account.address);
     } else {
-      console.log("  Winner: PLAYER 2", player2.account.address);
+      console.log("  WINNER: PLAYER 2", player2.account.address);
     }
 
     console.log(`  Payout: ${formatUnits(payout, 6)} USDC`);
     console.log(`  Final turn: ${finalTurn}`);
   }
 
-  // Final balances
   const p1Bal = await usdc.read.balanceOf([player1.account.address]);
   const p2Bal = await usdc.read.balanceOf([player2.account.address]);
   const brBal = await usdc.read.balanceOf([battleRoom.address]);
@@ -296,7 +360,7 @@ async function main() {
   console.log("  Final USDC balances:");
   console.log(`    Player 1: ${formatUnits(p1Bal, 6)} USDC`);
   console.log(`    Player 2: ${formatUnits(p2Bal, 6)} USDC`);
-  console.log(`    BattleRoom: ${formatUnits(brBal, 6)} USDC`);
+  console.log(`    BattleRoom: ${formatUnits(brBal, 6)} USDC (should be 0)`);
 
   console.log();
   console.log("=".repeat(70));

@@ -253,15 +253,14 @@ contract BattleRoom is ReentrancyGuard {
         bool p2Dead = _p2Slots[0].hp == 0 && _p2Slots[1].hp == 0;
 
         if (p1Dead && p2Dead) {
-            // Double KO — higher total HP before this turn wins, or p1 tiebreak
-            // Both are 0 so it's a true tie — settle by refund
             _settleRefund();
         } else if (p1Dead) {
             _settle(p2Wallet);
         } else if (p2Dead) {
             _settle(p1Wallet);
-        } else if (turn >= MAX_TURNS) {
-            // Time out — higher total HP wins
+        } else if (turn >= MAX_TURNS || _isStalemate()) {
+            // Stalemate: no slot has both cards alive, so no more damage possible.
+            // Or MAX_TURNS reached. Settle by higher total HP.
             uint256 p1Total = uint256(_p1Slots[0].hp) + uint256(_p1Slots[1].hp);
             uint256 p2Total = uint256(_p2Slots[0].hp) + uint256(_p2Slots[1].hp);
             if (p1Total > p2Total) {
@@ -275,6 +274,16 @@ contract BattleRoom is ReentrancyGuard {
             turn++;
             emit TurnStart(roomId, turn);
         }
+    }
+
+    /// @notice Returns true if no slot has both cards alive — no more damage possible
+    function _isStalemate() internal view returns (bool) {
+        for (uint256 i = 0; i < 2; i++) {
+            if (_p1Slots[i].hp > 0 && _p2Slots[i].hp > 0) {
+                return false; // this slot still has a live matchup
+            }
+        }
+        return true;
     }
 
     function _calcDamage(
@@ -293,13 +302,13 @@ contract BattleRoom is ReentrancyGuard {
     /// @notice 3x3 elemental multiplier table (scaled x100)
     function _multiplier(uint8 atkEl, uint8 defEl) internal pure returns (uint256) {
         // [attacker][defender]  FIRE  WATER  LIGHTNING
-        // FIRE                  100    50     175
-        // WATER                 175   100      50
-        // LIGHTNING              50   175     100
+        // FIRE                  120    50     200
+        // WATER                 200   120      50
+        // LIGHTNING              50   200     120
         uint8[3][3] memory t = [
-            [uint8(100), uint8( 50), uint8(175)],  // Fire
-            [uint8(175), uint8(100), uint8( 50)],  // Water
-            [uint8( 50), uint8(175), uint8(100)]   // Lightning
+            [uint8(120), uint8( 50), uint8(200)],  // Fire
+            [uint8(200), uint8(120), uint8( 50)],  // Water
+            [uint8( 50), uint8(200), uint8(120)]   // Lightning
         ];
         return uint256(t[atkEl][defEl]);
     }

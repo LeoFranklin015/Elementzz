@@ -9,9 +9,9 @@ contract BattleRoomHarness {
     /// @notice 3x3 elemental multiplier table (scaled x100)
     function multiplier(uint8 atkEl, uint8 defEl) public pure returns (uint256) {
         uint8[3][3] memory t = [
-            [uint8(100), uint8( 50), uint8(175)],  // Fire
-            [uint8(175), uint8(100), uint8( 50)],  // Water
-            [uint8( 50), uint8(175), uint8(100)]   // Lightning
+            [uint8(120), uint8( 50), uint8(200)],  // Fire
+            [uint8(200), uint8(120), uint8( 50)],  // Water
+            [uint8( 50), uint8(200), uint8(120)]   // Lightning
         ];
         return uint256(t[atkEl][defEl]);
     }
