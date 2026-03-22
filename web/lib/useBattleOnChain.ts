@@ -142,14 +142,17 @@ export function useBattleOnChain(battleRoomAddress: Address, roomId: number, str
     const permissionId = getStoredPermissionId();
     if (!permissionId || submittingRef.current || settled) return;
 
-    const currentTurn = turnRef.current || 1;
+    // Read FRESH state before deciding to submit
+    const freshState = await readRoomState();
+    if (!freshState || freshState.state !== 1) return; // Only submit if ACTIVE
+
+    const currentTurn = freshState.turnNum || 1;
     if (lastSubmittedTurn.current >= currentTurn) return;
 
-    const mySlots = amP1Ref.current ? p1SlotsRef.current : p2SlotsRef.current;
-    const oppSlots = amP1Ref.current ? p2SlotsRef.current : p1SlotsRef.current;
+    const mySlots = freshState.isP1 ? [freshState.slots[0], freshState.slots[1]] : [freshState.slots[2], freshState.slots[3]];
+    const oppSlots = freshState.isP1 ? [freshState.slots[2], freshState.slots[3]] : [freshState.slots[0], freshState.slots[1]];
 
-    if (mySlots.length < 2 || oppSlots.length < 2) return;
-    if (!mySlots[0]?.cardAgent || mySlots[0].cardAgent === ("0x" as Address)) return;
+    if (!mySlots[0]?.cardAgent || mySlots[0].maxHp === 0) return;
     if (mySlots.every(s => s.hp <= 0 || s.submitted)) { lastSubmittedTurn.current = currentTurn; return; }
 
     lastSubmittedTurn.current = currentTurn;
@@ -322,15 +325,7 @@ export function useBattleOnChain(battleRoomAddress: Address, roomId: number, str
     return () => { ws.close(); };
   }, [battleRoomAddress, roomId]);
 
-  // Auto-submit on first load
-  useEffect(() => {
-    if (phase === "waiting" && p1Slots.length >= 2 && roomState === 1) {
-      const mySlots = amP1 ? p1Slots : p2Slots;
-      if (mySlots.some(s => s.hp > 0 && !s.submitted) && mySlots[0].cardAgent !== ("0x" as Address)) {
-        submitActions();
-      }
-    }
-  }, [phase, p1Slots, p2Slots, roomState, amP1]);
+  // No separate auto-submit effect — the fallback poll handles all submission triggers
 
   // Fallback poll: runs always when battle active, checks for unsubmitted cards
   useEffect(() => {
