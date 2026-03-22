@@ -8,6 +8,18 @@ import ConnectButton from "@/components/ConnectButton";
 
 function HeroAction() {
   const { isConnected } = useAccount();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  // SSR: always show PLAY NOW button to avoid hydration mismatch
+  if (!mounted) {
+    return (
+      <button className="inline-block px-10 py-4 border-2 border-white/80 text-white font-[family-name:var(--font-press-start)] text-xs tracking-widest cursor-pointer">
+        PLAY NOW
+      </button>
+    );
+  }
+
   if (isConnected) {
     return (
       <Link
