@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff4400"/>
+      <stop offset="50%" stop-color="#ffaa00"/>
+      <stop offset="100%" stop-color="#0088ff"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="64" height="64" rx="8" fill="#050505"/>
+
+  <!-- Fire diamond - top left -->
+  <polygon points="20,10 28,20 20,30 12,20" fill="#ff4400"/>
+
+  <!-- Lightning bolt - top right -->
+  <polygon points="40,10 48,20 44,20 48,30 40,20 44,20" fill="#ffaa00"/>
+
+  <!-- Water drop - bottom center -->
+  <path d="M32,34 C37,42 40,46 40,50 C40,54 36,56 32,56 C28,56 24,54 24,50 C24,46 27,42 32,34Z" fill="#0088ff"/>
+
+  <!-- E letter overlay -->
+  <text x="32" y="44" font-family="'Courier New', monospace" font-weight="900" font-size="32" fill="url(#g)" text-anchor="middle" opacity="0.15">E</text>
+
+  <!-- Border -->
+  <rect x="2" y="2" width="60" height="60" rx="6" fill="none" stroke="url(#g)" stroke-width="2" opacity="0.4"/>
+</svg>
