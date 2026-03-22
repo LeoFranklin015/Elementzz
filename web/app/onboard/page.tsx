@@ -165,7 +165,7 @@ export default function Onboard() {
             {mounted && !isConnected ? (
               <p className="text-white/30 font-[family-name:var(--font-press-start)] text-[9px]">Connect your wallet first</p>
             ) : (
-              <button onClick={handleSummon} disabled={phase === "summoning" || !mounted}
+              <button onClick={handleSummon} disabled={!mounted}
                 className="pixel-btn text-sm px-10 py-4 disabled:opacity-50">
                 SUMMON CARDS
               </button>
