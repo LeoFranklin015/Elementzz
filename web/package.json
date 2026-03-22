@@ -19,6 +19,11 @@
     "viem": "^2.47.6",
     "wagmi": "^3.5.0"
   },
+  "overrides": {
+    "@jaw.id/wagmi": {
+      "@jaw.id/core": "0.1.3"
+    }
+  },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
