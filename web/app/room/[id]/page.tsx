@@ -26,6 +26,8 @@ export default function BattleRoomPage() {
   const [dmgP2, setDmgP2] = useState<number[]>([0, 0]);
   const [showDmg, setShowDmg] = useState(false);
   const [activeSlot, setActiveSlot] = useState(0);
+  const [showKO, setShowKO] = useState(false);
+  const [showSettledOverlay, setShowSettledOverlay] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
 
   const battle = useBattleOnChain(roomAddress, roomId, strategy);
@@ -59,6 +61,19 @@ export default function BattleRoomPage() {
 
   // Scroll log
   useEffect(() => { logRef.current?.scrollTo(0, 0); }, [logs]);
+
+  // KO animation when battle settles
+  useEffect(() => {
+    if (settled && !showKO && !showSettledOverlay) {
+      setShowKO(true);
+      // Show clash animation for 2s
+      setTimeout(() => {
+        setShowKO(false);
+        // Then show settled overlay
+        setTimeout(() => setShowSettledOverlay(true), 500);
+      }, 2500);
+    }
+  }, [settled]);
 
   const mySlots = amP1 ? p1Slots : p2Slots;
   const oppSlots = amP1 ? p2Slots : p1Slots;
@@ -367,6 +382,10 @@ export default function BattleRoomPage() {
                 <div key={i} className="font-mono text-[12px] flex items-start gap-1.5">
                   <span className="text-white/30 text-[11px] shrink-0">T{l.turn}</span>
                   <span style={{ color: l.color }}>{l.text}</span>
+                  {l.txHash && (
+                    <a href={`https://sepolia.basescan.org/tx/${l.txHash}`} target="_blank"
+                      className="text-white/50 text-[10px] hover:text-white/80 shrink-0 border border-white/20 px-1 rounded-sm">tx↗</a>
+                  )}
                 </div>
               ))}
             </div>
@@ -374,12 +393,44 @@ export default function BattleRoomPage() {
         </div>
       </main>
 
+      {/* KO Animation overlay */}
+      {showKO && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center">
+          <div className="relative flex items-center gap-12">
+            {/* Winner creature — rushes in */}
+            <div className="animate-slide-up" style={{
+              filter: `drop-shadow(0 0 30px ${ELEMENT_COLORS[mySlots[0]?.element || 0]}80)`,
+              animation: "creature-float 1s ease-in-out infinite",
+            }}>
+              <Creature element={(mySlots[0]?.element || 0) as 0 | 1 | 2} size={160} />
+            </div>
+
+            {/* KO explosion */}
+            <div className="flex flex-col items-center gap-4">
+              <span className="text-6xl animate-impact">💥</span>
+              <span className="font-[family-name:var(--font-press-start)] text-2xl animate-pulse"
+                style={{ color: "#ff2244", textShadow: "0 0 20px #ff224480" }}>
+                K.O.
+              </span>
+            </div>
+
+            {/* Loser creature — knocked back */}
+            <div style={{
+              filter: "grayscale(1) opacity(0.4)",
+              transform: "scaleX(-1) rotate(15deg) translateY(20px)",
+            }}>
+              <Creature element={(oppSlots[0]?.element || 0) as 0 | 1 | 2} size={140} />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Victory overlay */}
-      {settled && (
+      {showSettledOverlay && (
         <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center">
           <div className="text-center space-y-8 animate-slide-up">
             <div style={{ filter: "drop-shadow(0 0 40px rgba(255,170,0,0.3))" }}>
-              <Creature element={mySlots[0]?.element as 0 | 1 | 2 || 0} size={180} />
+              <Creature element={(mySlots[0]?.element || 0) as 0 | 1 | 2} size={180} />
             </div>
             <h1 className="font-[family-name:var(--font-press-start)] text-3xl"
               style={{
