@@ -50,16 +50,8 @@ DEFEND = halve incoming damage + regen 2 HP
 
 ## Architecture
 
-```
-┌─────────────┐     ┌──────────────┐     ┌──────────────────┐
-│   Browser    │     │  JAW Wallet  │     │  Avalanche Fuji  │
-│              │     │  (ERC-4337)  │     │                  │
-│  Next.js App ├────►│  Passkey     ├────►│  CardFactory     │
-│  AI Agent    │     │  Smart Acct  │     │  CardAgent (x2)  │
-│  Session Key ├────►│  Bundler     ├────►│  BattleRoom      │
-│              │     │  Paymaster   │     │  MockUSDC        │
-└─────────────┘     └──────────────┘     └──────────────────┘
-```
+<img width="3558" height="2970" alt="image" src="https://github.com/user-attachments/assets/2b011f5e-edb7-4947-924d-4effc280b548" />
+
 
 **Session Key flow:** Local private key → JAW Smart Account → sends UserOps with `permissionId` → PermissionManager validates on-chain → executes `CardAgent.execute(BattleRoom.attack/defend)`
 
@@ -95,4 +87,4 @@ npm run dev
 - **Wallet:** JAW (`@jaw.id/wagmi` + `@jaw.id/core`) — passkey smart accounts
 - **Chain:** Avalanche Fuji (43113)
 - **Contracts:** Solidity 0.8.24, Hardhat 3, OpenZeppelin
-- **Account Abstraction:** ERC-4337 via JAW bundler + Pimlico paymaster
+- **Account Abstraction:** jaw.id 
