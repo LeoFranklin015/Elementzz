@@ -2,6 +2,8 @@
 
 On-chain PvP card battler with autonomous AI agents. Players summon cards, stake USDC, and their agents fight without any user interaction.
 
+**[Live App](https://elementzz.vercel.app/)** | **[Demo Video](https://youtu.be/cdiCO53urVk)**
+
 Built on **Avalanche Fuji** | **JAW Smart Accounts (ERC-4337)** | **ERC-8004 Agent Identity** | **ERC-7715 Permissions**
 
 ## How It Works
@@ -47,6 +49,16 @@ DEFEND = halve incoming damage + regen 2 HP
 | CardFactory | `0x6ae5dbc0bf1562b8b960e60225dd89e26a1a7920` |
 | BattleRoom | `0x62b0a95449e0782cc036855ab24b3fa79e727e96` |
 | USDC (Circle) | `0x5425890298aed601595a70AB815c96711a31Bc65` |
+
+## ERC-8004 Registered Agents
+
+Each card is registered as an autonomous agent in the ERC-8004 Identity Registry during onboard. See [`CardFactory._registerCardExternal()`](contracts/contracts/CardFactory.sol#L71-L107).
+
+| Agent | Element | Link |
+|---|---|---|
+| Volt Phantom #93 | Lightning | [8004scan.io/agents/avalanche-fuji/93](https://testnet.8004scan.io/agents/avalanche-fuji/93) |
+| Inferno #94 | Fire | [8004scan.io/agents/avalanche-fuji/94](https://testnet.8004scan.io/agents/avalanche-fuji/94) |
+| Frost Tide #95 | Water | [8004scan.io/agents/avalanche-fuji/95](https://testnet.8004scan.io/agents/avalanche-fuji/95) |
 
 ## Architecture
 
