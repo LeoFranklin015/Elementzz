@@ -78,19 +78,25 @@ contract CardFactory is IERC721Receiver {
     ) external {
         require(msg.sender == address(this), "only self");
         // Build agent URI — JSON metadata describing this card agent
+        // Card names: Fire=Inferno, Water=Frost Tide, Lightning=Volt Phantom
+        string[3] memory cardNames;
+        cardNames[0] = "Inferno";
+        cardNames[1] = "Frost Tide";
+        cardNames[2] = "Volt Phantom";
+
         string memory agentURI = string(abi.encodePacked(
-            '{"name":"CardBattle Agent #', _uint2str(slotIndex),
+            '{"name":"Elementzz - ', cardNames[element],
             '","element":"', _elementNames[element],
             '","atk":', _uint2str(uint256(atkStat)),
             ',"def":', _uint2str(uint256(defStat)),
             ',"hp":', _uint2str(uint256(hpStat)),
-            ',"type":"autonomous-battle-card","protocol":"CardBattle"}'
+            ',"type":"autonomous-battle-card","protocol":"Elementzz"}'
         ));
 
         // Build metadata entries
         MetadataEntry[] memory metadata = new MetadataEntry[](4);
-        metadata[0] = MetadataEntry("name", abi.encode(string(abi.encodePacked("CardBattle ", _elementNames[element], " Agent"))));
-        metadata[1] = MetadataEntry("description", abi.encode("Autonomous battle card agent for CardBattle PvP game"));
+        metadata[0] = MetadataEntry("name", abi.encode(string(abi.encodePacked("Elementzz ", cardNames[element]))));
+        metadata[1] = MetadataEntry("description", abi.encode("Autonomous battle agent for Elementzz PvP game"));
         metadata[2] = MetadataEntry("cardAddress", abi.encode(cardAddr));
         metadata[3] = MetadataEntry("element", abi.encode(_elementNames[element]));
 

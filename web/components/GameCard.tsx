@@ -1,6 +1,7 @@
 "use client";
 
 import Creature from "./creatures";
+import { CARD_FACTORY } from "@/lib/contracts";
 
 const ELEMENTS = {
   0: { name: "Fire", cardName: "Inferno", color: "#ff4400", bg: "#1a0800", border: "#ff4400" },
@@ -15,6 +16,8 @@ interface GameCardProps {
   hp: number;
   maxHp: number;
   address?: string;
+  agentId?: number;
+  ownerAddress?: string;
   selected?: boolean;
   isDead?: boolean;
   isActing?: boolean;
@@ -29,6 +32,8 @@ export default function GameCard({
   hp,
   maxHp,
   address,
+  agentId,
+  ownerAddress,
   selected = false,
   isDead = false,
   isActing = false,
@@ -119,9 +124,15 @@ export default function GameCard({
         </div>
 
         {address && (
-          <div className="text-center font-mono text-[10px] opacity-40 truncate">
+          <a
+            href={`https://testnet.8004scan.io/users/${CARD_FACTORY}`}
+            target="_blank"
+            className="text-center font-mono text-[10px] text-white/40 hover:text-white/70 truncate block cursor-pointer"
+            onClick={(e) => e.stopPropagation()}
+          >
             {address.slice(0, 6)}...{address.slice(-4)}
-          </div>
+            <span className="ml-1 text-white/30">↗</span>
+          </a>
         )}
       </div>
     </div>

@@ -196,7 +196,7 @@ export default function Lobby() {
               {cards.length > 0 ? cards.map((card, i) => (
                 <GameCard key={i} element={card.element as 0 | 1 | 2}
                   atk={card.atk} def={card.def} hp={card.hp} maxHp={card.maxHp}
-                  address={card.address} size="sm" selected />
+                  address={card.address} ownerAddress={address} size="sm" selected />
               )) : (
                 <div className="text-white/30 py-8 text-center">
                   No cards. <a href="/onboard" className="underline text-white/50">Summon first</a>

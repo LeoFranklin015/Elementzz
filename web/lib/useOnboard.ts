@@ -102,6 +102,16 @@ export function useOnboard() {
   return { summon, mintUsdc, txHash, isSummoning, isConfirming, receipt, error };
 }
 
+export function useCardAgentId(cardAddress: Address | undefined) {
+  return useReadContract({
+    address: CARD_FACTORY,
+    abi: cardFactoryAbi,
+    functionName: "cardAgentId",
+    args: cardAddress ? [cardAddress] : undefined,
+    query: { enabled: !!cardAddress },
+  });
+}
+
 export function useUsdcBalance(address: Address | undefined) {
   return useReadContract({
     address: MOCK_USDC,

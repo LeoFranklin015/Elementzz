@@ -252,7 +252,7 @@ export default function Onboard() {
                   <GameCard
                     element={card.element as 0 | 1 | 2}
                     atk={card.atk} def={card.def} hp={card.hp} maxHp={card.maxHp}
-                    address={card.address} size="lg"
+                    address={card.address} ownerAddress={address} size="lg"
                   />
                 </div>
               )) : (

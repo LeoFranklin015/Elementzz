@@ -11,6 +11,7 @@ export const cardFactoryAbi = [
   { name: "onboard", type: "function", inputs: [], outputs: [], stateMutability: "nonpayable" },
   { name: "getCards", type: "function", inputs: [{ name: "player", type: "address" }], outputs: [{ name: "card1", type: "address" }, { name: "card2", type: "address" }], stateMutability: "view" },
   { name: "hasCards", type: "function", inputs: [{ name: "", type: "address" }], outputs: [{ name: "", type: "bool" }], stateMutability: "view" },
+  { name: "cardAgentId", type: "function", inputs: [{ name: "", type: "address" }], outputs: [{ name: "", type: "uint256" }], stateMutability: "view" },
   { name: "PlayerOnboarded", type: "event", inputs: [{ name: "player", type: "address", indexed: true }, { name: "card1", type: "address", indexed: false }, { name: "card2", type: "address", indexed: false }] },
 ] as const;
 
