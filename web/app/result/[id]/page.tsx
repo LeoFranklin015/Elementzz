@@ -10,7 +10,7 @@ import GameCard from "@/components/GameCard";
 import Creature from "@/components/creatures";
 import { BATTLE_ROOM, battleRoomAbi } from "@/lib/contracts";
 
-const ALCHEMY_RPC = "https://base-sepolia.g.alchemy.com/v2/6unFRgRqxklQkmPxSBhd2WE9aMV5ffMY";
+const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "https://api.avax-test.network/ext/bc/C/rpc";
 const CARD_NAMES = ["Inferno", "Frost Tide", "Volt Phantom"];
 const ELEMENT_COLORS = ["#ff4400", "#0088ff", "#ffaa00"];
 
@@ -48,7 +48,7 @@ export default function Result() {
   const fetchResult = async () => {
     try {
       const rpc = async (data: string): Promise<string | null> => {
-        const resp = await fetch(ALCHEMY_RPC, {
+        const resp = await fetch(RPC_URL, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to: BATTLE_ROOM, data }, "latest"] }),
         });
@@ -288,7 +288,7 @@ export default function Result() {
           <div className="flex gap-4 justify-center animate-slide-up" style={{ animationDelay: "800ms" }}>
             <Link href="/lobby" className="pixel-btn text-xs">PLAY AGAIN</Link>
             <a
-              href={`https://sepolia.basescan.org/address/${BATTLE_ROOM}`}
+              href={`https://testnet.snowtrace.io/address/${BATTLE_ROOM}`}
               target="_blank"
               className="pixel-btn text-xs"
             >

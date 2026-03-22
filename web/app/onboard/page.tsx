@@ -29,7 +29,7 @@ export default function Onboard() {
   const { data: usdcBal } = useUsdcBalance(address);
 
   // Actions
-  const { mintUsdc, error: summonError } = useOnboard();
+  const { error: summonError } = useOnboard();
   const { grant, isPending: isGranting, error: grantError } = useGrantSessionPermissions();
 
   // Already onboarded → check if permissions exist

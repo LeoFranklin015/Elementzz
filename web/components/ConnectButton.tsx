@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAccount, useConfig } from "wagmi";
 import { useConnect, useDisconnect } from "@jaw.id/wagmi";
 
@@ -14,19 +14,43 @@ export default function ConnectButton({ size = "sm" }: ConnectButtonProps) {
   const { mutate: disconnect } = useDisconnect();
   const config = useConfig();
   const [mounted, setMounted] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => setMounted(true), []);
+
+  // Close menu on outside click
+  useEffect(() => {
+    if (!showMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showMenu]);
 
   const handleConnect = () => {
     const connector = config.connectors[0];
     if (connector) connect({ connector });
   };
 
-  const handleDisconnect = () => {
-    disconnect({});
+  const handleCopy = () => {
+    if (address) {
+      navigator.clipboard.writeText(address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
-  // SSR placeholder — prevents hydration mismatch
+  const handleDisconnect = () => {
+    disconnect({});
+    setShowMenu(false);
+  };
+
+  // SSR placeholder
   if (!mounted) {
     if (size === "lg") {
       return (
@@ -45,12 +69,41 @@ export default function ConnectButton({ size = "sm" }: ConnectButtonProps) {
   if (isConnected && address) {
     const short = `${address.slice(0, 6)}...${address.slice(-4)}`;
     return (
-      <button
-        onClick={handleDisconnect}
-        className="px-3 py-1.5 text-xs font-mono text-white border-2 border-white/30 hover:border-white/50 transition-colors cursor-pointer"
-      >
-        {short}
-      </button>
+      <div className="relative" ref={menuRef}>
+        <button
+          onClick={() => setShowMenu(!showMenu)}
+          className="px-3 py-1.5 text-xs font-mono text-white border-2 border-white/30 hover:border-white/50 transition-colors cursor-pointer"
+        >
+          {short}
+        </button>
+
+        {showMenu && (
+          <div className="absolute right-0 top-full mt-2 w-56 bg-[#0a0a0a] border-2 border-white/10 z-50 shadow-xl">
+            {/* Full address */}
+            <div className="px-3 py-2 border-b border-white/5">
+              <div className="font-mono text-[10px] text-white/40 break-all">{address}</div>
+            </div>
+
+            {/* Copy address */}
+            <button
+              onClick={handleCopy}
+              className="w-full px-3 py-2.5 text-left text-sm text-white/70 hover:bg-white/5 hover:text-white transition-colors cursor-pointer flex items-center gap-2"
+            >
+              <span className="text-white/40">{copied ? "✓" : "⎘"}</span>
+              {copied ? "Copied!" : "Copy address"}
+            </button>
+
+            {/* Disconnect */}
+            <button
+              onClick={handleDisconnect}
+              className="w-full px-3 py-2.5 text-left text-sm text-[#ff2244]/70 hover:bg-[#ff2244]/10 hover:text-[#ff2244] transition-colors cursor-pointer flex items-center gap-2"
+            >
+              <span>⏻</span>
+              Disconnect
+            </button>
+          </div>
+        )}
+      </div>
     );
   }
 

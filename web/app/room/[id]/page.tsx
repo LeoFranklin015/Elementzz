@@ -383,7 +383,7 @@ export default function BattleRoomPage() {
                   <span className="text-white/30 text-[11px] shrink-0">T{l.turn}</span>
                   <span style={{ color: l.color }}>{l.text}</span>
                   {l.txHash && (
-                    <a href={`https://sepolia.basescan.org/tx/${l.txHash}`} target="_blank"
+                    <a href={`https://testnet.snowtrace.io/tx/${l.txHash}`} target="_blank"
                       className="text-white/50 text-[10px] hover:text-white/80 shrink-0 border border-white/20 px-1 rounded-sm">tx↗</a>
                   )}
                 </div>

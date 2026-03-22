@@ -7,8 +7,8 @@ import { battleRoomAbi, cardAgentAbi } from "./contracts";
 import { getOrCreateSessionAccount, getStoredPermissionId } from "./sessionKey";
 import { decide, type Strategy, type Action, type Decision, type CardState } from "./agent";
 
-const ALCHEMY_RPC = "https://base-sepolia.g.alchemy.com/v2/6unFRgRqxklQkmPxSBhd2WE9aMV5ffMY";
-const ALCHEMY_WSS = "wss://base-sepolia.g.alchemy.com/v2/6unFRgRqxklQkmPxSBhd2WE9aMV5ffMY";
+const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "https://api.avax-test.network/ext/bc/C/rpc";
+const WSS_URL = process.env.NEXT_PUBLIC_WSS_URL || "wss://api.avax-test.network/ext/bc/C/ws";
 const PAYMASTER_URL = process.env.NEXT_PUBLIC_PAYMASTER_URL || "";
 const POLICY_ID = process.env.NEXT_PUBLIC_POLICY_ID || "";
 
@@ -66,7 +66,7 @@ export function useBattleOnChain(battleRoomAddress: Address, roomId: number, str
   // ── RPC helper ─────────────────────────────────────────────────────
   const rpc = useCallback(async (data: string): Promise<string | null> => {
     try {
-      const resp = await fetch(ALCHEMY_RPC, {
+      const resp = await fetch(RPC_URL, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to: battleRoomAddress, data }, "latest"] }),
       });
@@ -260,7 +260,7 @@ export function useBattleOnChain(battleRoomAddress: Address, roomId: number, str
 
     readRoomState();
 
-    const ws = new WebSocket(ALCHEMY_WSS);
+    const ws = new WebSocket(WSS_URL);
 
     ws.onopen = () => {
       console.log("[ws] Connected");

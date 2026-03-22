@@ -10,7 +10,7 @@ import { usePlayerCardAddresses, useCardStats, useUsdcBalance } from "@/lib/useO
 import { getOrCreateSessionAccount, getStoredPermissionId, getStoredSessionAddress } from "@/lib/sessionKey";
 import { BATTLE_ROOM, battleRoomAbi } from "@/lib/contracts";
 
-const ALCHEMY_RPC = "https://base-sepolia.g.alchemy.com/v2/6unFRgRqxklQkmPxSBhd2WE9aMV5ffMY";
+const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "https://api.avax-test.network/ext/bc/C/rpc";
 const PAYMASTER_URL = process.env.NEXT_PUBLIC_PAYMASTER_URL || "";
 const POLICY_ID = process.env.NEXT_PUBLIC_POLICY_ID || "";
 
@@ -59,7 +59,7 @@ export default function Lobby() {
       const start = Math.max(0, count - 10);
       for (let i = count - 1; i >= start; i--) {
         try {
-          const resp = await fetch(ALCHEMY_RPC, {
+          const resp = await fetch(RPC_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -114,7 +114,7 @@ export default function Lobby() {
       await pollCallStatus(account, result.id);
 
       // Read the new room count to get roomId
-      const resp = await fetch(ALCHEMY_RPC, {
+      const resp = await fetch(RPC_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
