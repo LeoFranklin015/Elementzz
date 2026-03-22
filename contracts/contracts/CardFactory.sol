@@ -134,9 +134,9 @@ contract CardFactory is IERC721Receiver {
     }
 
     function _getStats(uint8 element) internal pure returns (uint8 atkStat, uint8 defStat, uint8 hpStat) {
-        if (element == 0) return (8, 4, 20);  // Fire
-        if (element == 1) return (5, 8, 22);  // Water
-        if (element == 2) return (9, 3, 18);  // Lightning
+        if (element == 0) return (10, 3, 15);  // Fire — glass cannon
+        if (element == 1) return (8, 5, 17);   // Water — balanced
+        if (element == 2) return (12, 2, 13);  // Lightning — burst
         revert("invalid element");
     }
 }

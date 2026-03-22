@@ -5,138 +5,73 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import Creature from "@/components/creatures";
-import { useBattle, type BattleCard, type TurnEvent } from "@/lib/useBattle";
-import type { Decision, Strategy } from "@/lib/agent";
-import { STRATEGIES } from "@/lib/agent";
+import { useBattleOnChain, type SlotData } from "@/lib/useBattleOnChain";
+import { type Strategy, STRATEGIES } from "@/lib/agent";
+import { BATTLE_ROOM } from "@/lib/contracts";
+import { type Address } from "viem";
 
 const ELEMENT_COLORS = ["#ff4400", "#0088ff", "#ffaa00"];
 const CARD_NAMES = ["Inferno", "Frost Tide", "Volt Phantom"];
 
-const INITIAL_P1: BattleCard[] = [
-  { element: 0, atk: 8, def: 4, hp: 20, maxHp: 20 },
-  { element: 2, atk: 9, def: 3, hp: 18, maxHp: 18 },
-];
-const INITIAL_P2: BattleCard[] = [
-  { element: 2, atk: 9, def: 3, hp: 18, maxHp: 18 },
-  { element: 1, atk: 5, def: 8, hp: 22, maxHp: 22 },
-];
-
-type Phase = "picking" | "waiting" | "thinking" | "fighting" | "damage" | "turnEnd" | "victory";
-
-export default function BattleRoom() {
+export default function BattleRoomPage() {
   const params = useParams();
-  const [p1Strategy, setP1Strategy] = useState<Strategy>("balanced");
+  const roomId = Number(params.id as string);
+  const roomAddress = BATTLE_ROOM;
+
+  const [strategy, setStrategy] = useState<Strategy>("balanced");
   const [started, setStarted] = useState(false);
-  const p2Strategy: Strategy = "balanced"; // opponent AI always balanced for demo
-
-  const { p1Cards, p2Cards, turn, settled, winner, currentDecisions, playTurn } = useBattle(INITIAL_P1, INITIAL_P2, p1Strategy, p2Strategy);
-
-  const [phase, setPhase] = useState<Phase>("picking");
-  const [activeFight, setActiveFight] = useState<number>(0);
-  const [dmg, setDmg] = useState<{ p1: number | null; p2: number | null }>({ p1: null, p2: null });
-  const [shake, setShake] = useState(false);
-  const [logs, setLogs] = useState<Array<{ text: string; color: string; turn: number }>>([]);
-  const [displayHp, setDisplayHp] = useState({ p1: [20, 18], p2: [18, 22] });
-  const [displayDecisions, setDisplayDecisions] = useState<{ p1: Decision[]; p2: Decision[] } | null>(null);
-  const [lastTurn, setLastTurn] = useState<TurnEvent | null>(null);
-  const [thinkingLine, setThinkingLine] = useState(0);
+  const [prevP1Hp, setPrevP1Hp] = useState<number[]>([]);
+  const [prevP2Hp, setPrevP2Hp] = useState<number[]>([]);
+  const [dmgP1, setDmgP1] = useState<number[]>([0, 0]);
+  const [dmgP2, setDmgP2] = useState<number[]>([0, 0]);
+  const [showDmg, setShowDmg] = useState(false);
+  const [activeSlot, setActiveSlot] = useState(0);
   const logRef = useRef<HTMLDivElement>(null);
 
-  // Auto-play loop — only after strategy picked
+  const battle = useBattleOnChain(roomAddress, roomId, strategy);
+  const {
+    roomState, turn, p1Slots, p2Slots,
+    p1Wallet, p2Wallet, amP1,
+    logs, decisions, settled, phase: battlePhase,
+    error, submitting, attackingSlot,
+  } = battle;
+
+  // Detect HP changes → show damage animation
   useEffect(() => {
-    if (phase !== "waiting" || !started) return;
-    const timer = setTimeout(() => {
-      const result = playTurn();
-      if (!result) return;
-      setLastTurn(result);
-      setDisplayDecisions({ p1: result.p1Decisions, p2: result.p2Decisions });
-      setPhase("thinking");
-      setThinkingLine(0);
-    }, turn === 0 ? 2000 : 1500);
-    return () => clearTimeout(timer);
-  }, [phase, turn, playTurn, started]);
+    if (p1Slots.length < 2) return;
+    const p1hp = [p1Slots[0].hp, p1Slots[1].hp];
+    const p2hp = [p2Slots[0].hp, p2Slots[1].hp];
 
-  // Thinking phase — typewriter reveal of reasoning
-  useEffect(() => {
-    if (phase !== "thinking" || !displayDecisions) return;
-    if (thinkingLine < 4) {
-      const timer = setTimeout(() => setThinkingLine(l => l + 1), 400);
-      return () => clearTimeout(timer);
-    }
+    if (prevP1Hp.length > 0) {
+      const d1 = [Math.max(0, prevP1Hp[0] - p1hp[0]), Math.max(0, prevP1Hp[1] - p1hp[1])];
+      const d2 = [Math.max(0, prevP2Hp[0] - p2hp[0]), Math.max(0, prevP2Hp[1] - p2hp[1])];
 
-    // Move to fighting
-    const timer = setTimeout(() => {
-      setActiveFight(0);
-      setPhase("fighting");
-    }, 600);
-    return () => clearTimeout(timer);
-  }, [phase, thinkingLine, displayDecisions, p1Cards, p2Cards, lastTurn]);
-
-  // Fighting → damage → next fight or turn end
-  useEffect(() => {
-    if (phase !== "fighting" || !lastTurn) return;
-    const fights = lastTurn.fights;
-
-    if (activeFight >= fights.length) {
-      // All fights done
-      setDisplayHp({ p1: lastTurn.hpAfter.p1, p2: lastTurn.hpAfter.p2 });
-      setLogs(prev => [...lastTurn.logs.map(l => ({ ...l, turn: lastTurn.turn })), ...prev]);
-      setPhase(lastTurn.fights.length > 0 && (settled || winner) ? "victory" : "turnEnd");
-      return;
-    }
-
-    const fight = fights[activeFight];
-
-    // Show clash
-    const t1 = setTimeout(() => {
-      setShake(true);
-      setDmg({ p1: fight.p2Dmg || null, p2: fight.p1Dmg || null });
-      setPhase("damage");
-      setTimeout(() => setShake(false), 300);
-    }, 800);
-
-    return () => clearTimeout(t1);
-  }, [phase, activeFight, lastTurn, settled, winner]);
-
-  // Damage → next fight
-  useEffect(() => {
-    if (phase !== "damage") return;
-    const timer = setTimeout(() => {
-      setDmg({ p1: null, p2: null });
-      setActiveFight(f => f + 1);
-      setPhase("fighting");
-    }, 1200);
-    return () => clearTimeout(timer);
-  }, [phase]);
-
-  // Turn end → back to waiting
-  useEffect(() => {
-    if (phase !== "turnEnd") return;
-    const timer = setTimeout(() => {
-      if (settled) {
-        setPhase("victory");
-      } else {
-        setPhase("waiting");
+      if (d1[0] + d1[1] + d2[0] + d2[1] > 0) {
+        setDmgP1(d1);
+        setDmgP2(d2);
+        setShowDmg(true);
+        setTimeout(() => setShowDmg(false), 2000);
       }
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, [phase, settled]);
+    }
+    setPrevP1Hp(p1hp);
+    setPrevP2Hp(p2hp);
+  }, [p1Slots, p2Slots]);
 
   // Scroll log
-  useEffect(() => {
-    logRef.current?.scrollTo(0, 0);
-  }, [logs]);
+  useEffect(() => { logRef.current?.scrollTo(0, 0); }, [logs]);
 
-  const fightSlot = lastTurn?.fights[activeFight]?.slot ?? 0;
-  const inArena = phase === "fighting" || phase === "damage";
-  const isVictory = phase === "victory";
+  const mySlots = amP1 ? p1Slots : p2Slots;
+  const oppSlots = amP1 ? p2Slots : p1Slots;
+  const myLabel = amP1 ? "P1 — YOU" : "P2 — YOU";
+  const oppLabel = amP1 ? "P2 — OPPONENT" : "P1 — OPPONENT";
+  const myColor = amP1 ? "#0088ff" : "#ff4400";
+  const oppColor = amP1 ? "#ff4400" : "#0088ff";
 
-  return (
-    <div className={`flex flex-col flex-1 min-h-screen ${shake ? "animate-shake" : ""}`}>
-      <Navbar />
-
-      {/* ═══ STRATEGY PICKER ═══ */}
-      {phase === "picking" && (
+  // Not started yet — show strategy picker
+  if (!started) {
+    return (
+      <div className="flex flex-col flex-1 min-h-screen">
+        <Navbar />
         <main className="flex-1 flex items-center justify-center p-6">
           <div className="max-w-2xl w-full space-y-10 text-center">
             <div className="space-y-3">
@@ -144,73 +79,71 @@ export default function BattleRoom() {
                 CHOOSE YOUR STRATEGY
               </h1>
               <p className="text-lg text-white/40">
-                Your AI agent will follow this strategy for the entire battle.
+                Your AI agent follows this strategy for the entire battle.
               </p>
             </div>
 
             <div className="grid grid-cols-3 gap-4">
               {(Object.entries(STRATEGIES) as [Strategy, typeof STRATEGIES[Strategy]][]).map(([key, strat]) => (
-                <button
-                  key={key}
-                  onClick={() => setP1Strategy(key)}
+                <button key={key} onClick={() => setStrategy(key)}
                   className={`pixel-border p-5 text-left space-y-3 cursor-pointer transition-all duration-200 ${
-                    p1Strategy === key
-                      ? "border-2 scale-[1.02]"
-                      : "opacity-60 hover:opacity-80"
+                    strategy === key ? "border-2 scale-[1.02]" : "opacity-60 hover:opacity-80"
                   }`}
                   style={{
-                    borderColor: p1Strategy === key ? strat.color : "rgba(255,255,255,0.1)",
-                    boxShadow: p1Strategy === key ? `0 0 20px ${strat.color}30` : "none",
-                  }}
-                >
-                  <div className="font-[family-name:var(--font-press-start)] text-[11px]" style={{ color: strat.color }}>
-                    {strat.name}
-                  </div>
-                  <p className="text-sm text-white/50 leading-6">
-                    {strat.desc}
-                  </p>
-                  {p1Strategy === key && (
-                    <div className="font-[family-name:var(--font-press-start)] text-[8px] text-white/80 pt-1">
-                      SELECTED
-                    </div>
+                    borderColor: strategy === key ? strat.color : "rgba(255,255,255,0.1)",
+                    boxShadow: strategy === key ? `0 0 20px ${strat.color}30` : "none",
+                  }}>
+                  <div className="font-[family-name:var(--font-press-start)] text-[11px]" style={{ color: strat.color }}>{strat.name}</div>
+                  <p className="text-sm text-white/50 leading-6">{strat.desc}</p>
+                  {strategy === key && (
+                    <div className="font-[family-name:var(--font-press-start)] text-[8px] text-white/80 pt-1">SELECTED</div>
                   )}
                 </button>
               ))}
             </div>
 
-            {/* Preview matchup */}
-            <div className="pixel-border p-4 flex items-center justify-center gap-8">
-              <div className="flex items-center gap-3">
-                <Creature element={INITIAL_P1[0].element} size={48} />
-                <Creature element={INITIAL_P1[1].element} size={48} />
+            {/* Room info */}
+            <div className="pixel-border p-4 space-y-2">
+              <div className="text-sm text-white/50">
+                Room: <span className="font-mono text-white/70">#{roomId}</span>
               </div>
-              <div className="font-[family-name:var(--font-press-start)] text-sm text-white/40">VS</div>
-              <div className="flex items-center gap-3">
-                <div style={{ transform: "scaleX(-1)" }}><Creature element={INITIAL_P2[0].element} size={48} /></div>
-                <div style={{ transform: "scaleX(-1)" }}><Creature element={INITIAL_P2[1].element} size={48} /></div>
+              <div className="text-sm text-white/50">
+                State: <span className={roomState === 1 ? "text-white" : "text-white/30"}>
+                  {roomState === 0 ? "WAITING" : roomState === 1 ? "ACTIVE" : "SETTLED"}
+                </span>
               </div>
+              {p1Wallet && (
+                <div className="text-sm text-white/50">
+                  You are: <span className="text-white">{amP1 ? "Player 1" : "Player 2"}</span>
+                </div>
+              )}
             </div>
 
-            <button
-              onClick={() => { setStarted(true); setPhase("waiting"); }}
-              className="inline-block px-10 py-4 border-2 border-white/80 text-white font-[family-name:var(--font-press-start)] text-xs tracking-widest hover:bg-white hover:text-[#050505] transition-colors cursor-pointer"
-            >
-              START BATTLE
+            <button onClick={() => setStarted(true)}
+              disabled={roomState !== 1}
+              className="pixel-btn text-sm px-10 py-4 disabled:opacity-30">
+              {roomState === 1 ? "START BATTLE" : roomState === 0 ? "WAITING FOR OPPONENT..." : "BATTLE SETTLED"}
             </button>
           </div>
         </main>
-      )}
+      </div>
+    );
+  }
 
-      {/* ═══ BATTLE UI ═══ */}
-      {phase !== "picking" && (
+  // ═══ BATTLE UI ═══
+  return (
+    <div className="flex flex-col flex-1 min-h-screen">
+      <Navbar />
       <main className="flex-1 flex gap-3 p-4 max-w-7xl mx-auto w-full">
 
-        {/* ═══ LEFT — Battle (arena + HP) ═══ */}
+        {/* LEFT — Battle */}
         <div className="flex-1 flex flex-col gap-3 min-w-0">
 
           {/* Header */}
           <div className="pixel-border p-3 flex items-center justify-between">
-            <span className="font-[family-name:var(--font-press-start)] text-[10px] text-white/50">ROOM #{params.id}</span>
+            <span className="font-[family-name:var(--font-press-start)] text-[10px] text-white/50">
+              {roomAddress.slice(0, 8)}...{roomAddress.slice(-4)}
+            </span>
             <div className="flex items-center gap-3">
               <span className="font-[family-name:var(--font-press-start)] text-[10px] text-white/80">
                 TURN <span className="text-white">{turn}</span>/20
@@ -218,200 +151,208 @@ export default function BattleRoom() {
               <div className="w-20 h-2 bg-[#0a0a0a] border border-white/10 overflow-hidden">
                 <div className="h-full hp-bar-fill" style={{ width: `${(turn / 20) * 100}%`, background: "linear-gradient(90deg, #ff4400, #ffaa00, #0088ff)" }} />
               </div>
-              <span className={`font-[family-name:var(--font-press-start)] text-[9px] px-2 py-1 border ${isVictory ? "border-purple-500 text-purple-400" : "border-white/40 text-white/80"}`}>
-                {isVictory ? "SETTLED" : phase === "thinking" ? "THINKING" : "ACTIVE"}
+              <span className={`font-[family-name:var(--font-press-start)] text-[9px] px-2 py-1 border ${
+                settled ? "border-purple-500 text-purple-400" :
+                battlePhase === "submitting" ? "border-[#ffaa00] text-[#ffaa00]" :
+                "border-white/40 text-white/80"
+              }`}>
+                {settled ? "SETTLED" :
+                 battlePhase === "submitting" ? "SUBMITTING" :
+                 battlePhase === "opponent" ? "WAITING" :
+                 battlePhase === "resolved" ? "RESOLVED" : "ACTIVE"}
               </span>
             </div>
           </div>
 
-          {/* HP bars */}
+          {/* HP bars — both players */}
           <div className="grid grid-cols-2 gap-3">
-            {[0, 1].map(pi => {
-              const cards = pi === 0 ? p1Cards : p2Cards;
-              const hp = pi === 0 ? displayHp.p1 : displayHp.p2;
-              const decisions = pi === 0 ? displayDecisions?.p1 : displayDecisions?.p2;
-              return (
-                <div key={pi} className="pixel-border p-3">
-                  <div className="font-[family-name:var(--font-press-start)] text-[9px] mb-2" style={{ color: pi === 0 ? "#0088ff" : "#ff4400" }}>
-                    {pi === 0 ? "P1 — YOU" : "P2 — OPPONENT"}
-                  </div>
-                  {cards.map((c, ci) => {
-                    const dead = hp[ci] <= 0;
-                    const pct = Math.max(0, (hp[ci] / c.maxHp) * 100);
-                    const col = pct > 60 ? ELEMENT_COLORS[c.element] : pct > 30 ? "#ffaa00" : "#ff2244";
-                    const decision = decisions?.[ci];
-                    const active = inArena && fightSlot === ci;
-                    return (
-                      <div key={ci} className={`flex items-center gap-2 py-1 ${dead ? "opacity-25" : ""} ${active ? "brightness-125" : ""}`}>
-                        <Creature element={c.element} size={24} />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex justify-between items-center">
-                            <span className="font-[family-name:var(--font-press-start)] text-[10px]" style={{ color: ELEMENT_COLORS[c.element] }}>
-                              {CARD_NAMES[c.element]}
+            {[
+              { label: myLabel, color: myColor, slots: mySlots, dmg: amP1 ? dmgP1 : dmgP2 },
+              { label: oppLabel, color: oppColor, slots: oppSlots, dmg: amP1 ? dmgP2 : dmgP1 },
+            ].map(({ label, color, slots, dmg }, pi) => (
+              <div key={pi} className="pixel-border p-3">
+                <div className="font-[family-name:var(--font-press-start)] text-[9px] mb-2" style={{ color }}>{label}</div>
+                {slots.map((s, ci) => {
+                  const dead = s.hp <= 0;
+                  const pct = s.maxHp > 0 ? Math.max(0, (s.hp / s.maxHp) * 100) : 0;
+                  const col = pct > 60 ? ELEMENT_COLORS[s.element] : pct > 30 ? "#ffaa00" : "#ff2244";
+                  return (
+                    <div key={ci} className={`flex items-center gap-2 py-1 ${dead ? "opacity-25" : ""}`}>
+                      <Creature element={s.element as 0 | 1 | 2} size={24} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-center">
+                          <span className="font-[family-name:var(--font-press-start)] text-[10px]" style={{ color: ELEMENT_COLORS[s.element] }}>
+                            {CARD_NAMES[s.element] || "???"}
+                          </span>
+                          {s.submitted && !dead && (
+                            <span className="font-[family-name:var(--font-press-start)] text-[7px] px-1 py-0.5 border border-white/20 text-white/40">
+                              READY
                             </span>
-                            {decision && !dead && phase !== "waiting" && (
-                              <span className="font-[family-name:var(--font-press-start)] text-[8px] px-1 py-0.5 border"
-                                style={{
-                                  borderColor: decision.action === "ATTACK" ? "#ff4400" : "#0088ff",
-                                  color: decision.action === "ATTACK" ? "#ff4400" : "#0088ff",
-                                  background: decision.action === "ATTACK" ? "#ff440015" : "#0088ff15",
-                                }}>
-                                {decision.action}
+                          )}
+                          <span className="font-[family-name:var(--font-press-start)] text-[10px] relative" style={{ color: col }}>
+                            {s.hp}/{s.maxHp}
+                            {showDmg && dmg[ci] > 0 && (
+                              <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[14px] animate-damage" style={{ color: "#ff2244" }}>
+                                -{dmg[ci]}
                               </span>
                             )}
-                            <span className="font-[family-name:var(--font-press-start)] text-[10px]" style={{ color: col }}>{hp[ci]}/{c.maxHp}</span>
-                          </div>
-                          <div className="w-full h-1.5 bg-[#0a0a0a] border border-white/10 overflow-hidden mt-0.5">
-                            <div className="h-full hp-bar-fill" style={{ width: `${pct}%`, background: col, boxShadow: `0 0 6px ${col}40` }} />
-                          </div>
+                          </span>
+                        </div>
+                        <div className="w-full h-1.5 bg-[#0a0a0a] border border-white/10 overflow-hidden mt-0.5">
+                          <div className="h-full hp-bar-fill" style={{ width: `${pct}%`, background: col, boxShadow: `0 0 6px ${col}40` }} />
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* ═══ ARENA ═══ */}
-          <div className="pixel-border flex-1 min-h-[320px] flex items-center justify-center relative overflow-hidden">
-            <div className="absolute inset-0 opacity-10" style={{
-              background: inArena
-                ? `radial-gradient(circle, ${ELEMENT_COLORS[p1Cards[fightSlot]?.element ?? 0]}30 0%, transparent 50%)`
-                : "radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%)",
-            }} />
-
-            {inArena && lastTurn ? (
-              <div className="relative z-10 flex items-center w-full justify-between px-8">
-                {/* P1 */}
-                <div className={`transition-all duration-500 ${phase === "damage" ? "translate-x-16 scale-110" : ""}`}>
-                  <div className="relative">
-                    <div style={{ filter: `drop-shadow(0 0 24px ${ELEMENT_COLORS[p1Cards[fightSlot].element]}80)` }}>
-                      <Creature element={p1Cards[fightSlot].element} size={150} />
-                    </div>
-                    {dmg.p1 !== null && dmg.p1 > 0 && (
-                      <div className="absolute -top-8 left-1/2 -translate-x-1/2 font-[family-name:var(--font-press-start)] text-2xl animate-damage"
-                        style={{ color: "#ff2244", textShadow: "0 0 12px #ff224480" }}>-{dmg.p1}</div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex flex-col items-center">
-                  {phase === "damage" ? (
-                    <span className="text-4xl animate-impact">💥</span>
-                  ) : (
-                    <span className="font-[family-name:var(--font-press-start)] text-lg text-white/60">VS</span>
-                  )}
-                </div>
-
-                {/* P2 (mirrored) */}
-                <div className={`transition-all duration-500 ${phase === "damage" ? "-translate-x-16 scale-110" : ""}`}>
-                  <div className="relative">
-                    <div style={{ filter: `drop-shadow(0 0 24px ${ELEMENT_COLORS[p2Cards[fightSlot].element]}80)`, transform: "scaleX(-1)" }}>
-                      <Creature element={p2Cards[fightSlot].element} size={150} />
-                    </div>
-                    {dmg.p2 !== null && dmg.p2 > 0 && (
-                      <div className="absolute -top-8 left-1/2 -translate-x-1/2 font-[family-name:var(--font-press-start)] text-2xl animate-damage"
-                        style={{ color: "#ff2244", textShadow: "0 0 12px #ff224480" }}>-{dmg.p2}</div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="relative z-10 text-center space-y-4">
-                {phase === "waiting" && turn === 0 && (
-                  <>
-                    <div className="flex justify-center items-center gap-12">
-                      <div style={{ filter: "drop-shadow(0 0 20px #ff440050)" }}><Creature element={0} size={110} /></div>
-                      <span className="font-[family-name:var(--font-press-start)] text-xl text-white/60">VS</span>
-                      <div style={{ filter: "drop-shadow(0 0 20px #ffaa0050)", transform: "scaleX(-1)" }}><Creature element={2} size={110} /></div>
-                    </div>
-                    <span className="font-[family-name:var(--font-press-start)] text-xs text-white/30 animate-blink block">AI AGENTS BOOTING...</span>
-                  </>
-                )}
-                {phase === "thinking" && (
-                  <div className="space-y-2">
-                    <span className="font-[family-name:var(--font-press-start)] text-xs text-white/50">AGENTS DECIDING...</span>
-                    <div className="flex justify-center gap-1">
-                      {[0, 1, 2].map(i => (
-                        <div key={i} className="w-2 h-2 bg-white/30" style={{ animation: `blink 1s ${i * 0.3}s step-end infinite` }} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {phase === "turnEnd" && (
-                  <span className="font-[family-name:var(--font-press-start)] text-sm text-white animate-slide-up">TURN {turn} COMPLETE</span>
-                )}
-                {phase === "waiting" && turn > 0 && (
-                  <span className="font-[family-name:var(--font-press-start)] text-xs text-white/30">NEXT TURN...</span>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* ═══ RIGHT — Logs + AI Reasoning ═══ */}
-        <div className="w-[360px] shrink-0 flex flex-col gap-3">
-
-          {/* AI Reasoning panel */}
-          <div className="pixel-border p-3">
-            <div className="flex items-center justify-between mb-3">
-              <span className="font-[family-name:var(--font-press-start)] text-[9px] text-white/50">AI REASONING</span>
-              <span className="font-[family-name:var(--font-press-start)] text-[8px] px-2 py-0.5 border" style={{ borderColor: STRATEGIES[p1Strategy].color, color: STRATEGIES[p1Strategy].color }}>
-                {STRATEGIES[p1Strategy].name}
-              </span>
-            </div>
-            {displayDecisions ? (
-              <div className="space-y-3">
-                {[0, 1].map(pi => {
-                  const cards = pi === 0 ? p1Cards : p2Cards;
-                  const decisions = pi === 0 ? displayDecisions.p1 : displayDecisions.p2;
-                  const hp = pi === 0 ? displayHp.p1 : displayHp.p2;
-                  return (
-                    <div key={pi}>
-                      <div className="font-[family-name:var(--font-press-start)] text-[9px] mb-1.5" style={{ color: pi === 0 ? "#0088ff" : "#ff4400" }}>
-                        {pi === 0 ? "P1" : "P2"}
-                      </div>
-                      {decisions.map((d, ci) => {
-                        if (hp[ci] <= 0) return null;
-                        return (
-                          <div key={ci} className="mb-2">
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <Creature element={cards[ci].element} size={16} />
-                              <span className="font-[family-name:var(--font-press-start)] text-[8px]" style={{ color: ELEMENT_COLORS[cards[ci].element] }}>
-                                {CARD_NAMES[cards[ci].element]}
-                              </span>
-                              <span className="font-[family-name:var(--font-press-start)] text-[8px] px-1 py-0.5 border ml-auto"
-                                style={{
-                                  borderColor: d.action === "ATTACK" ? "#ff4400" : "#0088ff",
-                                  color: d.action === "ATTACK" ? "#ff4400" : "#0088ff",
-                                }}>
-                                {d.action}
-                              </span>
-                            </div>
-                            <div className="space-y-0.5 ml-5">
-                              {d.reasoning.slice(0, phase === "thinking" ? thinkingLine : 99).map((line, li) => (
-                                <div key={li} className="font-mono text-[13px] text-white/60 flex items-start gap-1">
-                                  <span className="text-white/40 shrink-0">{'>'}</span>
-                                  <span>{line}</span>
-                                </div>
-                              ))}
-                              {phase === "thinking" && thinkingLine < d.reasoning.length && (
-                                <span className="font-mono text-[13px] text-white/60 animate-blink ml-2.5">_</span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
                     </div>
                   );
                 })}
               </div>
-            ) : (
-              <div className="text-white/50 text-xs text-center py-6 font-mono animate-blink">
-                Waiting for agents...
+            ))}
+          </div>
+
+          {/* ARENA */}
+          <div className="pixel-border flex-1 min-h-[300px] flex items-center justify-center relative overflow-hidden">
+            <div className="absolute inset-0 opacity-10" style={{
+              background: showDmg
+                ? "radial-gradient(circle, #ff224430 0%, transparent 50%)"
+                : "radial-gradient(circle, rgba(255,255,255,0.05) 0%, transparent 70%)",
+            }} />
+
+            <div className="relative z-10 flex items-center w-full justify-between px-8">
+              {/* My lead card */}
+              {mySlots.length > 0 && (
+                <div className={`transition-all duration-500 ${showDmg ? "translate-x-12 scale-105" : ""}`}>
+                  <div className="relative">
+                    <div style={{ filter: `drop-shadow(0 0 20px ${ELEMENT_COLORS[mySlots[0]?.element || 0]}60)` }}>
+                      <Creature element={(mySlots[0]?.element || 0) as 0 | 1 | 2} size={140} />
+                    </div>
+                    <div className="text-center mt-2">
+                      <span className="font-[family-name:var(--font-press-start)] text-[8px]" style={{ color: ELEMENT_COLORS[mySlots[0]?.element || 0] }}>
+                        {CARD_NAMES[mySlots[0]?.element || 0]}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Center */}
+              <div className="flex flex-col items-center gap-2">
+                {showDmg ? (
+                  <span className="text-4xl animate-impact">💥</span>
+                ) : battlePhase === "submitting" ? (
+                  <div className="space-y-2 text-center">
+                    <div className="w-3 h-3 bg-white/40 animate-pulse mx-auto" />
+                    <span className="font-[family-name:var(--font-press-start)] text-[8px] text-white/50">SUBMITTING</span>
+                  </div>
+                ) : battlePhase === "opponent" ? (
+                  <div className="space-y-2 text-center">
+                    <div className="flex gap-1 justify-center">
+                      {[0, 1, 2].map(i => (
+                        <div key={i} className="w-2 h-2 bg-white/30" style={{ animation: `blink 1s ${i * 0.3}s step-end infinite` }} />
+                      ))}
+                    </div>
+                    <span className="font-[family-name:var(--font-press-start)] text-[8px] text-white/30">WAITING FOR OPPONENT</span>
+                  </div>
+                ) : (
+                  <span className="font-[family-name:var(--font-press-start)] text-lg text-white/40">VS</span>
+                )}
+              </div>
+
+              {/* Opponent lead card (mirrored) */}
+              {oppSlots.length > 0 && (
+                <div className={`transition-all duration-500 ${showDmg ? "-translate-x-12 scale-105" : ""}`}>
+                  <div className="relative">
+                    <div style={{
+                      filter: `drop-shadow(0 0 20px ${ELEMENT_COLORS[oppSlots[0]?.element || 0]}60)`,
+                      transform: "scaleX(-1)",
+                    }}>
+                      <Creature element={(oppSlots[0]?.element || 0) as 0 | 1 | 2} size={140} />
+                    </div>
+                    <div className="text-center mt-2">
+                      <span className="font-[family-name:var(--font-press-start)] text-[8px]" style={{ color: ELEMENT_COLORS[oppSlots[0]?.element || 0] }}>
+                        {CARD_NAMES[oppSlots[0]?.element || 0]}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT — AI Reasoning + Logs */}
+        <div className="w-[360px] shrink-0 flex flex-col gap-3">
+
+          {/* Strategy badge */}
+          <div className="pixel-border p-3">
+            <div className="flex items-center justify-between">
+              <span className="font-[family-name:var(--font-press-start)] text-[9px] text-white/50">AI AGENT</span>
+              <span className="font-[family-name:var(--font-press-start)] text-[8px] px-2 py-0.5 border"
+                style={{ borderColor: STRATEGIES[strategy].color, color: STRATEGIES[strategy].color }}>
+                {STRATEGIES[strategy].name}
+              </span>
+            </div>
+
+            {/* AI decisions for my cards */}
+            {decisions.length > 0 && (
+              <div className="mt-3 space-y-3">
+                {decisions.map((d, ci) => {
+                  if (d.reasoning[0] === "DEAD" || d.reasoning[0] === "Already submitted") return null;
+                  const slot = mySlots[ci];
+                  if (!slot) return null;
+                  return (
+                    <div key={ci}>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Creature element={slot.element as 0 | 1 | 2} size={16} />
+                        <span className="font-[family-name:var(--font-press-start)] text-[8px]" style={{ color: ELEMENT_COLORS[slot.element] }}>
+                          {CARD_NAMES[slot.element]}
+                        </span>
+                        <span className="font-[family-name:var(--font-press-start)] text-[8px] px-1 py-0.5 border ml-auto"
+                          style={{
+                            borderColor: d.action === "ATTACK" ? "#ff4400" : "#0088ff",
+                            color: d.action === "ATTACK" ? "#ff4400" : "#0088ff",
+                          }}>
+                          {d.action}
+                        </span>
+                      </div>
+                      <div className="space-y-0.5 ml-5">
+                        {d.reasoning.map((line, li) => (
+                          <div key={li} className="font-mono text-[12px] text-white/50 flex items-start gap-1">
+                            <span className="text-white/30 shrink-0">{'>'}</span>
+                            <span>{line}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
+
+            {decisions.length === 0 && (
+              <div className="mt-3 text-white/30 text-sm font-mono animate-blink text-center py-3">
+                Agent initializing...
+              </div>
+            )}
+          </div>
+
+          {/* Battle status */}
+          <div className="pixel-border p-3 space-y-2">
+            <div className="font-[family-name:var(--font-press-start)] text-[8px] text-white/50">STATUS</div>
+            <div className="font-mono text-xs space-y-1">
+              <div className="flex justify-between">
+                <span className="text-white/40">Phase:</span>
+                <span className="text-white">{battlePhase}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-white/40">You are:</span>
+                <span className="text-white">{amP1 ? "Player 1" : "Player 2"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-white/40">Turn:</span>
+                <span className="text-white">{turn}/20</span>
+              </div>
+              {error && <div className="text-[#ff2244] text-xs mt-1">{error}</div>}
+            </div>
           </div>
 
           {/* Battle log */}
@@ -419,10 +360,12 @@ export default function BattleRoom() {
             <div className="font-[family-name:var(--font-press-start)] text-[9px] text-white/50 mb-2">BATTLE LOG</div>
             <div ref={logRef} className="h-full max-h-[300px] overflow-y-auto space-y-1">
               {logs.length === 0 ? (
-                <div className="text-white/50 text-xs text-center py-6 font-mono animate-blink">AI agents initializing...</div>
+                <div className="text-white/30 text-xs text-center py-6 font-mono animate-blink">
+                  Waiting for actions...
+                </div>
               ) : logs.map((l, i) => (
-                <div key={i} className="font-mono text-[13px] flex items-start gap-1.5">
-                  <span className="text-white/40 text-[12px] shrink-0">T{l.turn}</span>
+                <div key={i} className="font-mono text-[12px] flex items-start gap-1.5">
+                  <span className="text-white/30 text-[11px] shrink-0">T{l.turn}</span>
                   <span style={{ color: l.color }}>{l.text}</span>
                 </div>
               ))}
@@ -430,14 +373,13 @@ export default function BattleRoom() {
           </div>
         </div>
       </main>
-      )}
 
-      {/* Victory */}
-      {isVictory && winner && (
+      {/* Victory overlay */}
+      {settled && (
         <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center">
           <div className="text-center space-y-8 animate-slide-up">
-            <div style={{ filter: `drop-shadow(0 0 40px ${winner === "p1" ? "#ff440060" : "#0088ff60"})` }}>
-              <Creature element={winner === "p1" ? p1Cards[0].element : p2Cards[0].element} size={180} />
+            <div style={{ filter: "drop-shadow(0 0 40px rgba(255,170,0,0.3))" }}>
+              <Creature element={mySlots[0]?.element as 0 | 1 | 2 || 0} size={180} />
             </div>
             <h1 className="font-[family-name:var(--font-press-start)] text-3xl"
               style={{
@@ -445,15 +387,14 @@ export default function BattleRoom() {
                 WebkitBackgroundClip: "text",
                 WebkitTextFillColor: "transparent",
                 backgroundClip: "text",
-              }}
-            >{winner === "p1" ? "VICTORY!" : winner === "p2" ? "DEFEATED" : "DRAW"}</h1>
-            <p className="font-[family-name:var(--font-press-start)] text-sm text-white/50">
-              {winner === "draw" ? "Both players refunded" : `${winner === "p1" ? "You" : "Opponent"} won `}
-              {winner !== "draw" && <span className="text-white">200 USDC</span>}
-            </p>
-            <p className="font-mono text-white/30">Settled in {turn} turns</p>
+              }}>
+              BATTLE SETTLED
+            </h1>
+            <div className="font-mono text-white/50">
+              Final: P1[{p1Slots[0]?.hp},{p1Slots[1]?.hp}] vs P2[{p2Slots[0]?.hp},{p2Slots[1]?.hp}]
+            </div>
             <div className="flex gap-4 justify-center">
-              <Link href="/result/1" className="pixel-btn text-xs">VIEW RESULTS</Link>
+              <Link href={`/result/${roomId}`} className="pixel-btn text-xs">VIEW RESULTS</Link>
               <Link href="/lobby" className="pixel-btn text-xs">BACK TO LOBBY</Link>
             </div>
           </div>

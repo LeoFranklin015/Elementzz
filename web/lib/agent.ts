@@ -65,6 +65,14 @@ function decideAggressive(my: CardState, opp: CardState): Decision {
   const wouldDie = incomingDmg >= my.hp;
   const surviveIfDefend = incomingIfDefend < my.hp;
 
+  // Stalemate breaker: if both sides deal very low damage, defending just
+  // extends the game forever (regen +2 outpaces halved damage). Always attack.
+  if (myDmg <= 2 && incomingDmg <= 2) {
+    reasoning.push(`Low dmg matchup (${myDmg} vs ${incomingDmg}) — defending stalls`);
+    reasoning.push("ATTACK TO BREAK STALEMATE");
+    return { action: "ATTACK", reasoning, confidence: 95 };
+  }
+
   if (canKill) {
     reasoning.push(`Lethal! ${myDmg} dmg kills (${opp.hp} HP)`);
     reasoning.push("FINISH THEM");
@@ -104,6 +112,14 @@ function decideBalanced(my: CardState, opp: CardState): Decision {
   const hasAdvantage = myMult === 200;
   const hasDisadvantage = myMult === 50;
 
+  // Stalemate breaker: if both sides deal very low damage, defending just
+  // extends the game forever (regen +2 outpaces halved damage). Always attack.
+  if (myDmg <= 2 && incomingDmg <= 2) {
+    reasoning.push(`Low dmg matchup (${myDmg} vs ${incomingDmg}) — defending stalls`);
+    reasoning.push("ATTACK TO BREAK STALEMATE");
+    return { action: "ATTACK", reasoning, confidence: 95 };
+  }
+
   if (canKill) {
     reasoning.push(`Can kill (${myDmg} dmg vs ${opp.hp} HP)`);
     reasoning.push("GO FOR THE KILL");
@@ -142,8 +158,8 @@ function decideBalanced(my: CardState, opp: CardState): Decision {
     return { action: "ATTACK", reasoning, confidence: 65 };
   }
 
-  if (myDmg <= 2 && hpRatio > 0.6) {
-    reasoning.push(`Low damage (${myDmg}) — not worth trading`);
+  if (myDmg <= 2 && incomingDmg > 2 && hpRatio > 0.6) {
+    reasoning.push(`Low damage (${myDmg}) but taking ${incomingDmg} — not worth trading`);
     reasoning.push("PLAY DEFENSIVE");
     return { action: "DEFEND", reasoning, confidence: 55 };
   }
@@ -163,6 +179,14 @@ function decideDefensive(my: CardState, opp: CardState): Decision {
   const hpRatio = my.hp / my.maxHp;
   const canKill = myDmg >= opp.hp;
   const hasAdvantage = myMult === 200;
+
+  // Stalemate breaker: if both sides deal very low damage, defending just
+  // extends the game forever (regen +2 outpaces halved damage). Always attack.
+  if (myDmg <= 2 && incomingDmg <= 2) {
+    reasoning.push(`Low dmg matchup (${myDmg} vs ${incomingDmg}) — defending stalls`);
+    reasoning.push("ATTACK TO BREAK STALEMATE");
+    return { action: "ATTACK", reasoning, confidence: 95 };
+  }
 
   // Always take the kill
   if (canKill) {
@@ -184,6 +208,14 @@ function decideDefensive(my: CardState, opp: CardState): Decision {
     reasoning.push(`Dealing ${myDmg} — worth the trade`);
     reasoning.push("CALCULATED STRIKE");
     return { action: "ATTACK", reasoning, confidence: 65 };
+  }
+
+  // If my damage is too low, defending just slows the game with no real benefit.
+  // Attack to make progress instead.
+  if (myDmg <= 2) {
+    reasoning.push(`Low damage (${myDmg}) — defending just prolongs the fight`);
+    reasoning.push("ATTACK TO MAKE PROGRESS");
+    return { action: "ATTACK", reasoning, confidence: 60 };
   }
 
   // Default: DEFEND

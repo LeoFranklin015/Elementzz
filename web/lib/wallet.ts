@@ -19,7 +19,7 @@ export const wagmiConfig = createConfig({
   chains: [baseSepolia, avalancheFuji],
   connectors: [jawConnect],
   transports: {
-    [baseSepolia.id]: http("https://sepolia.base.org"),
+    [baseSepolia.id]: http("https://base-sepolia.g.alchemy.com/v2/6unFRgRqxklQkmPxSBhd2WE9aMV5ffMY"),
     [avalancheFuji.id]: http("https://api.avax-test.network/ext/bc/C/rpc"),
   },
 });

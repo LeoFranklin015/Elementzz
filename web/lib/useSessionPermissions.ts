@@ -26,9 +26,9 @@ export function useGrantSessionPermissions() {
             { target: MOCK_USDC, functionSignature: "approve(address,uint256)" },
             { target: MOCK_USDC, functionSignature: "mint(address,uint256)" },
             // Room operations
-            { target: BATTLE_ROOM, functionSignature: "createRoom(address[2],uint256)" },
-            { target: BATTLE_ROOM, functionSignature: "joinRoom(address[2])" },
-            { target: BATTLE_ROOM, functionSignature: "forceSettle()" },
+            { target: BATTLE_ROOM, functionSignature: "createRoom(address[2],uint256,uint256,uint8,bytes32,bytes32)" },
+            { target: BATTLE_ROOM, functionSignature: "joinRoom(uint256,address[2],uint256,uint8,bytes32,bytes32)" },
+            { target: BATTLE_ROOM, functionSignature: "forceSettle(uint256)" },
             // Card agent execute (attack/defend)
             { target: card1, functionSignature: "execute(address,bytes)" },
             { target: card2, functionSignature: "execute(address,bytes)" },

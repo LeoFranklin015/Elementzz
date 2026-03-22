@@ -9,7 +9,9 @@ import Creature from "@/components/creatures";
 import { useOnboard, useHasCards, usePlayerCardAddresses, useCardStats, useUsdcBalance } from "@/lib/useOnboard";
 import { useGrantSessionPermissions } from "@/lib/useSessionPermissions";
 import { loadSessionKey, getStoredPermissionId } from "@/lib/sessionKey";
-import { formatUnits } from "viem";
+import { formatUnits, parseUnits, encodeFunctionData } from "viem";
+import { useSendCalls, useWriteContract } from "wagmi";
+import { MOCK_USDC, BATTLE_ROOM, CARD_FACTORY, mockUsdcAbi, cardFactoryAbi } from "@/lib/contracts";
 
 type Phase = "intro" | "summoning" | "granting" | "revealed";
 
@@ -27,7 +29,7 @@ export default function Onboard() {
   const { data: usdcBal } = useUsdcBalance(address);
 
   // Actions
-  const { summon, txHash, isSummoning, isConfirming, receipt, error: summonError } = useOnboard();
+  const { mintUsdc, error: summonError } = useOnboard();
   const { grant, isPending: isGranting, error: grantError } = useGrantSessionPermissions();
 
   // Already onboarded → check if permissions exist
@@ -44,25 +46,54 @@ export default function Onboard() {
     }
   }, [hasCards, cardAddrs]);
 
-  // When onboard tx confirms → grant permissions
+  // Poll for onboard completion when summoning
   useEffect(() => {
-    if (receipt && phase === "summoning") {
-      refetchHasCards();
-      refetchCards();
-      setPhase("granting");
-    }
-  }, [receipt, phase, refetchHasCards, refetchCards]);
+    if (phase !== "summoning") return;
+    const interval = setInterval(async () => {
+      const { data: has } = await refetchHasCards();
+      if (has) {
+        await refetchCards();
+        setPhase("granting");
+        clearInterval(interval);
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [phase, refetchHasCards, refetchCards]);
 
-  // Grant handler — must be triggered by user click (browsers block auto-popups)
+  // Batch onboard + approve in one popup via sendCalls
+  const { sendCallsAsync } = useSendCalls();
+
+  const handleSummon = async () => {
+    setPhase("summoning");
+    try {
+      // One popup: onboard + approve USDC to BattleRoom
+      const id = await sendCallsAsync({
+        calls: [
+          {
+            to: CARD_FACTORY,
+            data: encodeFunctionData({ abi: cardFactoryAbi, functionName: "onboard" }),
+          },
+          {
+            to: MOCK_USDC,
+            data: encodeFunctionData({
+              abi: mockUsdcAbi,
+              functionName: "approve",
+              args: [BATTLE_ROOM, parseUnits("100000", 6)],
+            }),
+          },
+        ],
+      });
+      console.log("Onboard+Approve batch sent:", id);
+    } catch (e: any) {
+      console.error("Summon failed:", e);
+    }
+  };
+
+  // Grant session key permissions (separate popup — needs card addresses)
   const handleGrant = async () => {
     if (!cardAddrs?.[0] || cardAddrs[0] === "0x0000000000000000000000000000000000000000") return;
     const permId = await grant(cardAddrs[0], cardAddrs[1]);
     if (permId) setPhase("revealed");
-  };
-
-  const handleSummon = async () => {
-    setPhase("summoning");
-    await summon();
   };
 
   const cards = [card0.data, card1.data].filter(Boolean) as NonNullable<typeof card0.data>[];
@@ -70,8 +101,8 @@ export default function Onboard() {
 
   // Steps for the progress UI
   const steps = [
-    { text: "Deploying card agents on-chain", done: !!txHash },
-    { text: "Waiting for confirmation", done: !!receipt },
+    { text: "Deploying card agents + approving USDC", done: phase === "granting" || phase === "revealed" },
+    { text: "Waiting for confirmation", done: phase === "granting" || phase === "revealed" },
     { text: "Granting session key permissions", done: phase === "revealed" },
     { text: "Session key can now play autonomously", done: phase === "revealed" },
   ];
@@ -134,7 +165,7 @@ export default function Onboard() {
             {mounted && !isConnected ? (
               <p className="text-white/30 font-[family-name:var(--font-press-start)] text-[9px]">Connect your wallet first</p>
             ) : (
-              <button onClick={handleSummon} disabled={isSummoning || !mounted}
+              <button onClick={handleSummon} disabled={phase === "summoning" || !mounted}
                 className="pixel-btn text-sm px-10 py-4 disabled:opacity-50">
                 SUMMON CARDS
               </button>
@@ -190,12 +221,6 @@ export default function Onboard() {
               </div>
             )}
 
-            {txHash && (
-              <div className="font-mono text-xs text-white/30">
-                tx: {txHash.slice(0, 10)}...{txHash.slice(-8)}{" "}
-                <a href={`https://sepolia.basescan.org/tx/${txHash}`} target="_blank" className="text-white/50 underline">BaseScan</a>
-              </div>
-            )}
 
             {error && <div className="text-sm" style={{ color: "#ff2244" }}>{error}</div>}
           </div>
